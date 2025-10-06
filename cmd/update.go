@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    "github.com/spf13/cobra"
 )
 
 // updateCmd represents the update command
@@ -20,11 +21,11 @@ var updateCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		tableName, updateClause, whereClause, err := ipfsdb.ParseUpdate(queryString)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+        tableName, updateClause, whereClause, err := parser.ParseUpdate(queryString)
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+            os.Exit(1)
+        }
 
 		err = ipfsdb.Update(ipfsApi, dbName, tableName, updateClause.Column, updateClause.Value, whereClause.Column, whereClause.Value)
 		if err != nil {

@@ -1,12 +1,13 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-	"strings"
+    "fmt"
+    "os"
+    "strings"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    "github.com/spf13/cobra"
 )
 
 // executeCmd represents the execute command
@@ -28,11 +29,11 @@ var executeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		tableName, values, err := ipfsdb.ParseInsert(queryString)
-		if err != nil {
-			fmt.Printf("Error parsing query: %v\n", err)
-			os.Exit(1)
-		}
+        tableName, values, err := parser.ParseInsert(queryString)
+        if err != nil {
+            fmt.Printf("Error parsing query: %v\n", err)
+            os.Exit(1)
+        }
 
 		err = ipfsdb.Insert(ipfsApi, dbName, tableName, values)
 		if err != nil {

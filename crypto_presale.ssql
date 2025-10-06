@@ -1,0 +1,33 @@
+
+CREATE TABLE users (
+    user_id STRING PRIMARY KEY,
+    username STRING,
+    wallet_address STRING,
+    kyc_status STRING,
+    country STRING
+);
+
+CREATE TABLE allocations (
+    allocation_id STRING PRIMARY KEY,
+    user_id STRING,
+    presale_round STRING,
+    amount_usd NUMBER,
+    token_amount NUMBER,
+    transaction_hash STRING
+);
+
+CREATE TABLE transactions (
+    transaction_id STRING PRIMARY KEY,
+    user_id STRING,
+    amount NUMBER,
+    currency STRING,
+    status STRING,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE vesting_schedules (
+    vesting_id STRING PRIMARY KEY,
+    allocation_id STRING,
+    unlock_date TIMESTAMP,
+    percentage_unlocked NUMBER
+);

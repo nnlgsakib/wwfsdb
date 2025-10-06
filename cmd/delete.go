@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    "github.com/spf13/cobra"
 )
 
 // deleteCmd represents the delete command
@@ -20,11 +21,11 @@ var deleteCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		tableName, whereClause, err := ipfsdb.ParseDelete(queryString)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
-		}
+        tableName, whereClause, err := parser.ParseDelete(queryString)
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+            os.Exit(1)
+        }
 
 		err = ipfsdb.Delete(ipfsApi, dbName, tableName, whereClause.Column, whereClause.Value)
 		if err != nil {
