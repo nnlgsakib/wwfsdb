@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/nnlgsakib/wwfsdb/pkg/parser"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/spf13/cobra"
 )
 
 // dropCmd represents the drop command
@@ -21,7 +21,7 @@ var dropCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		tableName, err := parser.ParseDrop(queryString)
+        tableName, err := ssql.ParseDrop(queryString)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)

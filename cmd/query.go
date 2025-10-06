@@ -7,7 +7,7 @@ import (
 
     shell "github.com/ipfs/go-ipfs-api"
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
     "github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		fmt.Printf("Querying database '%s' with: \"%s\"\n", dbName, queryString)
 
         // --- 1. Parse the query string ---
-        tableName, whereClause, err := parser.ParseSelect(queryString)
+        tableName, whereClause, err := ssql.ParseSelect(queryString)
         if err != nil {
             fmt.Printf("Error: %v\n", err)
             os.Exit(1)

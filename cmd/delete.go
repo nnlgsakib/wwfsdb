@@ -5,7 +5,7 @@ import (
     "os"
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
     "github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ var deleteCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-        tableName, whereClause, err := parser.ParseDelete(queryString)
+        tableName, whereClause, err := ssql.ParseDelete(queryString)
         if err != nil {
             fmt.Printf("Error: %v\n", err)
             os.Exit(1)

@@ -1,33 +1,33 @@
-
-CREATE TABLE users (
-    user_id STRING PRIMARY KEY,
-    username STRING,
-    wallet_address STRING,
-    kyc_status STRING,
-    country STRING
+CREATE TABLE investors (
+    id VARCHAR(255),
+    name VARCHAR(255),
+    email VARCHAR(255),
+    wallet_address VARCHAR(255)
 );
 
-CREATE TABLE allocations (
-    allocation_id STRING PRIMARY KEY,
-    user_id STRING,
-    presale_round STRING,
-    amount_usd NUMBER,
-    token_amount NUMBER,
-    transaction_hash STRING
+CREATE TABLE token_stages (
+    stage_id VARCHAR(255),
+    stage_name VARCHAR(255),
+    token_price DECIMAL(18, 8),
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    max_allocation_per_investor DECIMAL(36, 18)
 );
 
 CREATE TABLE transactions (
-    transaction_id STRING PRIMARY KEY,
-    user_id STRING,
-    amount NUMBER,
-    currency STRING,
-    status STRING,
-    created_at TIMESTAMP
+    tx_id VARCHAR(255),
+    investor_id VARCHAR(255),
+    stage_id VARCHAR(255),
+    amount_invested_usd DECIMAL(18, 2),
+    tokens_purchased DECIMAL(36, 18),
+    transaction_date TIMESTAMP,
+    status VARCHAR(50)
 );
 
 CREATE TABLE vesting_schedules (
-    vesting_id STRING PRIMARY KEY,
-    allocation_id STRING,
+    schedule_id VARCHAR(255),
+    investor_id VARCHAR(255),
+    stage_id VARCHAR(255),
     unlock_date TIMESTAMP,
-    percentage_unlocked NUMBER
+    percentage_unlocked DECIMAL(5, 2)
 );

@@ -1,15 +1,15 @@
 package ipfsdb
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"os"
-	"strings"
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "os"
+    "strings"
 
-	shell "github.com/ipfs/go-ipfs-api"
-	"github.com/nnlgsakib/wwfsdb/pkg/parser"
+    shell "github.com/ipfs/go-ipfs-api"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
 )
 
 // Insert adds a new row to a table
@@ -193,19 +193,19 @@ func LoadTable(sh *shell.Shell, tableCID string) (*Table, error) {
 }
 
 // LoadSchema loads a schema from IPFS
-func LoadSchema(sh *shell.Shell, schemaCID string) (*parser.Schema, error) {
-	data, err := sh.Cat(schemaCID)
-	if err != nil {
-		return nil, err
-	}
-	defer data.Close()
+func LoadSchema(sh *shell.Shell, schemaCID string) (*ssql.Schema, error) {
+    data, err := sh.Cat(schemaCID)
+    if err != nil {
+        return nil, err
+    }
+    defer data.Close()
 
-	var schema parser.Schema
-	if err := json.NewDecoder(data).Decode(&schema); err != nil {
-		return nil, err
-	}
+    var schema ssql.Schema
+    if err := json.NewDecoder(data).Decode(&schema); err != nil {
+        return nil, err
+    }
 
-	return &schema, nil
+    return &schema, nil
 }
 
 // LoadRow loads a row from IPFS
@@ -320,7 +320,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		createType := strings.ToUpper(queryParts[1])
 		switch createType {
 		case "DATABASE":
-			dbName, err := parser.ParseCreateDatabase(query)
+        dbName, err := ssql.ParseCreateDatabase(query)
 			if err != nil {
 				return "", err
 			}
@@ -330,7 +330,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 			}
 			return fmt.Sprintf("Database '%s' created successfully.", dbName), nil
 		case "TABLE":
-			schema, tableName, err := parser.ParseCreateTable(query)
+        schema, tableName, err := ssql.ParseCreateTable(query)
 			if err != nil {
 				return "", err
 			}
@@ -342,8 +342,8 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		default:
 			return "", fmt.Errorf("unsupported CREATE statement: %s", query)
 		}
-	case "SELECT":
-		tableName, where, err := parser.ParseSelect(query)
+    case "SELECT":
+        tableName, where, err := ssql.ParseSelect(query)
 		if err != nil {
 			return "", err
 		}
@@ -366,8 +366,8 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 		return string(jsonResult), nil
 
-	case "INSERT":
-		tableName, values, err := parser.ParseInsert(query)
+    case "INSERT":
+        tableName, values, err := ssql.ParseInsert(query)
 		if err != nil {
 			return "", err
 		}
@@ -379,8 +379,8 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 		return "INSERT successful", nil
 
-	case "UPDATE":
-		tableName, update, where, err := parser.ParseUpdate(query)
+    case "UPDATE":
+        tableName, update, where, err := ssql.ParseUpdate(query)
 		if err != nil {
 			return "", err
 		}
@@ -392,8 +392,8 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 		return "UPDATE successful", nil
 
-	case "DELETE":
-		tableName, where, err := parser.ParseDelete(query)
+    case "DELETE":
+        tableName, where, err := ssql.ParseDelete(query)
 		if err != nil {
 			return "", err
 		}
@@ -411,7 +411,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 }
 
 // Migrate adds a new table to the database
-func Migrate(ipfsAPI, dbName, tableName string, schema *parser.Schema) (string, error) {
+func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Add the schema to IPFS

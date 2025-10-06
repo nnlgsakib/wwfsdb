@@ -6,7 +6,7 @@ import (
     "strings"
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
     "github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ var executeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-        tableName, values, err := parser.ParseInsert(queryString)
+        tableName, values, err := ssql.ParseInsert(queryString)
         if err != nil {
             fmt.Printf("Error parsing query: %v\n", err)
             os.Exit(1)

@@ -1,4 +1,4 @@
-package parser
+package parsera
 
 import (
 	"fmt"
@@ -150,33 +150,33 @@ func ParseSelect(sql string) (string, *WhereClause, error) {
 
 // ParseInsert parses an INSERT statement.
 func ParseInsert(sql string) (string, []string, error) {
-    re := regexp.MustCompile(`(?i)INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*)\);`)
-    matches := re.FindStringSubmatch(sql)
+	re := regexp.MustCompile(`(?i)INSERT\s+INTO\s+(\w+)\s+VALUES\s*\((.*)\);`)
+	matches := re.FindStringSubmatch(sql)
 
-    if len(matches) != 3 {
-        return "", nil, fmt.Errorf("invalid INSERT statement")
-    }
+	if len(matches) != 3 {
+		return "", nil, fmt.Errorf("invalid INSERT statement")
+	}
 
-    tableName := matches[1]
-    valuesStr := matches[2]
+	tableName := matches[1]
+	valuesStr := matches[2]
 
-    // Support both quoted and unquoted tokens by splitting on commas
-    // and trimming quotes/spaces, matching previous behavior in ipfsdb parser.
-    parts := strings.Split(valuesStr, ",")
-    var values []string
-    for _, p := range parts {
-        v := strings.TrimSpace(p)
-        if strings.HasPrefix(v, "'") && strings.HasSuffix(v, "'") && len(v) >= 2 {
-            v = strings.Trim(v, "'")
-        }
-        values = append(values, v)
-    }
+	// Support both quoted and unquoted tokens by splitting on commas
+	// and trimming quotes/spaces, matching previous behavior in ipfsdb parser.
+	parts := strings.Split(valuesStr, ",")
+	var values []string
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if strings.HasPrefix(v, "'") && strings.HasSuffix(v, "'") && len(v) >= 2 {
+			v = strings.Trim(v, "'")
+		}
+		values = append(values, v)
+	}
 
-    if len(values) == 0 {
-        return "", nil, fmt.Errorf("no values found in INSERT statement")
-    }
+	if len(values) == 0 {
+		return "", nil, fmt.Errorf("no values found in INSERT statement")
+	}
 
-    return tableName, values, nil
+	return tableName, values, nil
 }
 
 // ParseUpdate parses an UPDATE statement.

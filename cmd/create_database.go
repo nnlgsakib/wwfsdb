@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/nnlgsakib/wwfsdb/pkg/parser"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/spf13/cobra"
 )
 
 // createDatabaseCmd represents the createdatabase command
@@ -17,11 +17,11 @@ var createDatabaseCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		queryString := args[0]
 
-		dbName, err := parser.ParseCreateDatabase(queryString)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
-		}
+        dbName, err := ssql.ParseCreateDatabase(queryString)
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+            return
+        }
 
 		programID, err := ipfsdb.CreateDatabase(ipfsApi, dbName)
 		if err != nil {

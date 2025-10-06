@@ -4,12 +4,12 @@ Copyright © 2025 NNLGSakib
 package cmd
 
 import (
-	"fmt"
-	"os"
+    "fmt"
+    "os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	"github.com/nnlgsakib/wwfsdb/pkg/parser"
-	"github.com/spf13/cobra"
+    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/spf13/cobra"
 )
 
 // migrateCmd represents the migrate command
@@ -32,11 +32,11 @@ var migrateCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		tables, err := parser.ParseMultipleCreateTables(string(content))
-		if err != nil {
-			fmt.Printf("Error parsing ssql file: %v\n", err)
-			os.Exit(1)
-		}
+        tables, err := ssql.ParseMultipleCreateTables(string(content))
+        if err != nil {
+            fmt.Printf("Error parsing ssql file: %v\n", err)
+            os.Exit(1)
+        }
 
 		for tableName, schema := range tables {
 			dbCid, err := ipfsdb.Migrate(ipfsApi, dbName, tableName, schema)

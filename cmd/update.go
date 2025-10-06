@@ -5,7 +5,7 @@ import (
     "os"
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    "github.com/nnlgsakib/wwfsdb/pkg/parser"
+    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
     "github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ var updateCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-        tableName, updateClause, whereClause, err := parser.ParseUpdate(queryString)
+        tableName, updateClause, whereClause, err := ssql.ParseUpdate(queryString)
         if err != nil {
             fmt.Printf("Error: %v\n", err)
             os.Exit(1)
