@@ -634,6 +634,19 @@ func Delete(ipfsAPI, dbName, tableName, whereColumn, whereValue string) error {
 func LoadRegistry() (map[string]RegistryEntry, error) {
 	data, err := os.ReadFile("registry.json")
 	if err != nil {
+		if os.IsNotExist(err) {
+			// If the registry doesn't exist, create a new one
+			registry := make(map[string]RegistryEntry)
+			data, err := json.MarshalIndent(registry, "", "  ")
+			if err != nil {
+				return nil, err
+			}
+			err = os.WriteFile("registry.json", data, 0644)
+			if err != nil {
+				return nil, err
+			}
+			return registry, nil
+		}
 		return nil, err
 	}
 
