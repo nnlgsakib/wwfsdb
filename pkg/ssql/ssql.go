@@ -8,7 +8,7 @@ import (
 type (
 	Column       = ast.Column
 	Schema       = ast.Schema
-	WhereClause  = ast.WhereClause
+	Expression   = ast.Expression
 	UpdateClause = ast.UpdateClause
 	Statement    = ast.Statement
 )

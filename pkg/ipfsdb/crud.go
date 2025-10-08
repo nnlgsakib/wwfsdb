@@ -1,16 +1,18 @@
 package ipfsdb
 
 import (
-    "bytes"
-    "context"
-    "encoding/json"
-    "fmt"
-    "os"
-    "strings"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
-    shell "github.com/ipfs/go-ipfs-api"
-    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	shell "github.com/ipfs/go-ipfs-api"
+	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 )
 
 // Insert adds a new row to a table
@@ -83,7 +85,7 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 }
 
 // Query retrieves rows from a table
-func Query(ipfsAPI, dbName, tableName, whereColumn, whereValue string) ([]map[string]interface{}, error) {
+func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expression) ([]map[string]interface{}, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -118,17 +120,178 @@ func Query(ipfsAPI, dbName, tableName, whereColumn, whereValue string) ([]map[st
 			return nil, err
 		}
 
-		if whereColumn == "" || (row[whereColumn] != nil && row[whereColumn].(string) == whereValue) {
-			// Convert row to include only the fields from the schema
-			schemaRow := make(map[string]interface{})
-			for _, col := range schema.Columns {
-				schemaRow[col.Name] = row[col.Name]
+		include, err := evaluateExpression(row, where)
+		if err != nil {
+			return nil, err
+		}
+
+		if include {
+			// Filter columns
+			resultRow := make(map[string]interface{})
+			if len(columns) == 1 && columns[0] == "*" {
+				for _, col := range schema.Columns {
+					resultRow[col.Name] = row[col.Name]
+				}
+			} else {
+				for _, colName := range columns {
+					resultRow[colName] = row[colName]
+				}
 			}
-			results = append(results, schemaRow)
+			results = append(results, resultRow)
 		}
 	}
 
 	return results, nil
+}
+
+func evaluateExpression(row map[string]interface{}, expr ast.Expression) (bool, error) {
+	if expr == nil {
+		return true, nil
+	}
+
+	switch e := expr.(type) {
+	case *ast.BinaryExpr:
+		left, err := evaluateExpression(row, e.Left)
+		if err != nil {
+			return false, err
+		}
+		right, err := evaluateExpression(row, e.Right)
+		if err != nil {
+			return false, err
+		}
+
+		switch e.Operator {
+		case "AND":
+			return left && right, nil
+		case "OR":
+			return left || right, nil
+		default:
+			return false, fmt.Errorf("unsupported binary operator: %s", e.Operator)
+		}
+
+	case *ast.ComparisonExpr:
+		left, err := evaluateExpressionValue(row, e.Left)
+		if err != nil {
+			return false, err
+		}
+		right, err := evaluateExpressionValue(row, e.Right)
+		if err != nil {
+			return false, err
+		}
+
+		// Try numeric comparison first
+		leftNum, leftIsNum := getNumericValue(left)
+		rightNum, rightIsNum := getNumericValue(right)
+
+		if leftIsNum && rightIsNum {
+			switch e.Operator {
+			case "=":
+				return leftNum == rightNum, nil
+			case "!=":
+				return leftNum != rightNum, nil
+			case ">":
+				return leftNum > rightNum, nil
+			case "<":
+				return leftNum < rightNum, nil
+			case ">=":
+				return leftNum >= rightNum, nil
+			case "<=":
+				return leftNum <= rightNum, nil
+			}
+		}
+
+		// Fallback to string comparison
+		leftStr, leftIsStr := left.(string)
+		rightStr, rightIsStr := right.(string)
+
+		if !leftIsStr || !rightIsStr {
+			return false, fmt.Errorf("cannot compare types %T and %T", left, right)
+		}
+
+		switch e.Operator {
+		case "=":
+			return leftStr == rightStr, nil
+		case "!=":
+			return leftStr != rightStr, nil
+		case ">":
+			return leftStr > rightStr, nil
+		case "<":
+			return leftStr < rightStr, nil
+		case ">=":
+			return leftStr >= rightStr, nil
+		case "<=":
+			return leftStr <= rightStr, nil
+		default:
+			return false, fmt.Errorf("unsupported comparison operator: %s", e.Operator)
+		}
+
+	case *ast.LikeExpr:
+		left, err := evaluateExpressionValue(row, e.Left)
+		if err != nil {
+			return false, err
+		}
+		pattern, err := evaluateExpressionValue(row, e.Pattern)
+		if err != nil {
+			return false, err
+		}
+
+		leftStr, okLeft := left.(string)
+		patternStr, okPattern := pattern.(string)
+		if !okLeft || !okPattern {
+			return false, fmt.Errorf("LIKE operator requires string operands, got %T and %T", left, pattern)
+		}
+
+		matchPattern := strings.ReplaceAll(patternStr, "%", "*")
+		matchPattern = strings.ReplaceAll(matchPattern, "_", "?")
+
+		return filepath.Match(matchPattern, leftStr)
+
+	case *ast.InExpr:
+		left, err := evaluateExpressionValue(row, e.Left)
+		if err != nil {
+			return false, err
+		}
+
+		for _, valExpr := range e.Values {
+			right, err := evaluateExpressionValue(row, valExpr)
+			if err != nil {
+				return false, err
+			}
+			if left == right {
+				return true, nil
+			}
+		}
+		return false, nil
+
+	default:
+		return false, fmt.Errorf("unsupported expression type: %T", e)
+	}
+}
+
+func getNumericValue(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case string:
+		f, err := strconv.ParseFloat(val, 64)
+		if err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+func evaluateExpressionValue(row map[string]interface{}, expr ast.Expression) (interface{}, error) {
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		return row[e.Name], nil
+	case *ast.Literal:
+		return e.Value, nil
+	case *ast.NumberLiteral:
+		return e.Value, nil
+	default:
+		return nil, fmt.Errorf("unsupported expression value type: %T", e)
+	}
 }
 
 // LoadDatabase loads a database from IPFS
@@ -196,18 +359,18 @@ func LoadTable(sh *shell.Shell, tableCID string) (*Table, error) {
 
 // LoadSchema loads a schema from IPFS
 func LoadSchema(sh *shell.Shell, schemaCID string) (*ssql.Schema, error) {
-    data, err := sh.Cat(schemaCID)
-    if err != nil {
-        return nil, err
-    }
-    defer data.Close()
+	data, err := sh.Cat(schemaCID)
+	if err != nil {
+		return nil, err
+	}
+	defer data.Close()
 
-    var schema ssql.Schema
-    if err := json.NewDecoder(data).Decode(&schema); err != nil {
-        return nil, err
-    }
+	var schema ssql.Schema
+	if err := json.NewDecoder(data).Decode(&schema); err != nil {
+		return nil, err
+	}
 
-    return &schema, nil
+	return &schema, nil
 }
 
 // LoadRow loads a row from IPFS
@@ -357,13 +520,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		}
 		return fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
 	case *ast.SelectStmt:
-		var whereColumn, whereValue string
-		if s.Where != nil {
-			whereColumn = s.Where.Column
-			whereValue = s.Where.Value
-		}
-
-		rows, err := Query(ipfsAPI, dbName, s.Table, whereColumn, whereValue)
+		rows, err := Query(ipfsAPI, dbName, s.Table, s.Columns, s.Where)
 		if err != nil {
 			return "", err
 		}
@@ -384,7 +541,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		return "INSERT successful", nil
 
 	case *ast.UpdateStmt:
-		err = Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where.Column, s.Where.Value)
+		err = Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where)
 		if err != nil {
 			return "", err
 		}
@@ -392,7 +549,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		return "UPDATE successful", nil
 
 	case *ast.DeleteStmt:
-		err = Delete(ipfsAPI, dbName, s.Table, s.Where.Column, s.Where.Value)
+		err = Delete(ipfsAPI, dbName, s.Table, s.Where)
 		if err != nil {
 			return "", err
 		}
@@ -483,7 +640,7 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 }
 
 // Update modifies a row in a table
-func Update(ipfsAPI, dbName, tableName, setColumn, setValue, whereColumn, whereValue string) error {
+func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Expression) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -512,7 +669,12 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue, whereColumn, whereV
 			return err
 		}
 
-		if row[whereColumn] != nil && row[whereColumn].(string) == whereValue {
+		include, err := evaluateExpression(row, where)
+		if err != nil {
+			return err
+		}
+
+		if include {
 			// 5. Update the row
 			row[setColumn] = setValue
 
@@ -525,7 +687,6 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue, whereColumn, whereV
 			// 7. Update the table with the new row CID
 			table.Rows[i] = newRowCID
 			updated = true
-			break
 		}
 	}
 
@@ -557,7 +718,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue, whereColumn, whereV
 }
 
 // Delete removes a row from a table
-func Delete(ipfsAPI, dbName, tableName, whereColumn, whereValue string) error {
+func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -587,7 +748,12 @@ func Delete(ipfsAPI, dbName, tableName, whereColumn, whereValue string) error {
 			return err
 		}
 
-		if row[whereColumn] != nil && row[whereColumn].(string) == whereValue {
+		include, err := evaluateExpression(row, where)
+		if err != nil {
+			return err
+		}
+
+		if include {
 			deleted = true
 		} else {
 			newRows = append(newRows, rowCID)
@@ -623,4 +789,3 @@ func Delete(ipfsAPI, dbName, tableName, whereColumn, whereValue string) error {
 	publishAsync(sh, dbName, newDbCID)
 	return nil
 }
-

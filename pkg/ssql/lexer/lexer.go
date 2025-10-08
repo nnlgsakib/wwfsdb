@@ -17,9 +17,15 @@ const (
 	// Identifiers & literals
 	IDENT  = "IDENT"  // add, foobar, x, y, ...
 	STRING = "STRING" // "foobar" or 'foobar'
+	NUMBER = "NUMBER"
 
 	// Operators
-	ASSIGN = "="
+	ASSIGN   = "="
+	GT       = ">"
+	LT       = "<"
+	GTE      = ">="
+	LTE      = "<="
+	NE       = "!="
 
 	// Delimiters
 	COMMA     = ","
@@ -42,6 +48,10 @@ const (
 	UPDATE   = "UPDATE"
 	SET      = "SET"
 	DELETE   = "DELETE"
+	AND      = "AND"
+	OR       = "OR"
+	LIKE     = "LIKE"
+	IN       = "IN"
 )
 
 var keywords = map[string]TokenType{
@@ -58,6 +68,10 @@ var keywords = map[string]TokenType{
 	"UPDATE":   UPDATE,
 	"SET":      SET,
 	"DELETE":   DELETE,
+	"AND":      AND,
+	"OR":       OR,
+	"LIKE":     LIKE,
+	"IN":       IN,
 }
 
 func LookupIdent(ident string) TokenType {
@@ -99,9 +113,33 @@ func (l *Lexer) NextToken() Token {
 	switch l.ch {
 	case '=':
 		tok = newToken(ASSIGN, l.ch)
+	case '>':
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			tok = Token{Type: GTE, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = newToken(GT, l.ch)
+		}
+	case '<':
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			tok = Token{Type: LTE, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = newToken(LT, l.ch)
+		}
+	case '!':
+		if l.peekChar() == '=' {
+			ch := l.ch
+			l.readChar()
+			tok = Token{Type: NE, Literal: string(ch) + string(l.ch)}
+		} else {
+			tok = newToken(ILLEGAL, l.ch)
+		}
 	case ';':
 		tok = newToken(SEMICOLON, l.ch)
-	case '(': 
+	case '(':
 		tok = newToken(LPAREN, l.ch)
 	case ')':
 		tok = newToken(RPAREN, l.ch)
@@ -116,9 +154,13 @@ func (l *Lexer) NextToken() Token {
 		tok.Literal = ""
 		tok.Type = EOF
 	default:
-		if isLetter(l.ch) || isDigit(l.ch) {
+		if isLetter(l.ch) {
 			tok.Literal = l.readIdentifier()
 			tok.Type = LookupIdent(tok.Literal)
+			return tok
+		} else if isDigit(l.ch) {
+			tok.Type = NUMBER
+			tok.Literal = l.readNumber()
 			return tok
 		} else {
 			tok = newToken(ILLEGAL, l.ch)
@@ -127,6 +169,14 @@ func (l *Lexer) NextToken() Token {
 
 	l.readChar()
 	return tok
+}
+
+func (l *Lexer) peekChar() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	} else {
+		return l.input[l.readPosition]
+	}
 }
 
 func (l *Lexer) skipWhitespace() {
@@ -138,6 +188,14 @@ func (l *Lexer) skipWhitespace() {
 func (l *Lexer) readIdentifier() string {
 	position := l.position
 	for isLetter(l.ch) || isDigit(l.ch) {
+		l.readChar()
+	}
+	return l.input[position:l.position]
+}
+
+func (l *Lexer) readNumber() string {
+	position := l.position
+	for isDigit(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]

@@ -37,7 +37,7 @@ var updateCmd = &cobra.Command{
 		updateClause := updateStmt.Set
 		whereClause := updateStmt.Where
 
-		err = ipfsdb.Update(ipfsApi, dbName, tableName, updateClause.Column, updateClause.Value, whereClause.Column, whereClause.Value)
+		err = ipfsdb.Update(ipfsApi, dbName, tableName, updateClause.Column, updateClause.Value, whereClause)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

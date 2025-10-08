@@ -36,7 +36,7 @@ var deleteCmd = &cobra.Command{
 		tableName := deleteStmt.Table
 		whereClause := deleteStmt.Where
 
-		err = ipfsdb.Delete(ipfsApi, dbName, tableName, whereClause.Column, whereClause.Value)
+		err = ipfsdb.Delete(ipfsApi, dbName, tableName, whereClause)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

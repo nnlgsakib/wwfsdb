@@ -31,7 +31,7 @@ This stage focuses on core architecture and correctness, addressing fundamental 
 
 With a stable foundation, this stage focuses on adding powerful new capabilities to the database.
 
-- [ ] **1. Expand SQL Language Support:**
+- [✅] **1. Expand SQL Language Support:**
   - **Prerequisite:** Stage 1 SQL Parser Overhaul.
   - **Features to Add:**
     - `SELECT <columns>`: Allow querying for specific columns, not just `*`.

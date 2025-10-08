@@ -39,14 +39,8 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		tableName := selectStmt.Table
 		whereClause := selectStmt.Where
 
-		var whereColumn, whereValue string
-		if whereClause != nil {
-			whereColumn = whereClause.Column
-			whereValue = whereClause.Value
-		}
-
 		// --- 2. Execute the query using ipfsdb.Query ---
-		rows, err := ipfsdb.Query(ipfsApi, dbName, tableName, whereColumn, whereValue)
+		rows, err := ipfsdb.Query(ipfsApi, dbName, tableName, selectStmt.Columns, whereClause)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
@@ -77,8 +71,12 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 
 		// --- 4. Print results ---
 		var headers []string
-		for _, col := range schema.Columns {
-			headers = append(headers, col.Name)
+		if len(selectStmt.Columns) == 1 && selectStmt.Columns[0] == "*" {
+			for _, col := range schema.Columns {
+				headers = append(headers, col.Name)
+			}
+		} else {
+			headers = selectStmt.Columns
 		}
 		fmt.Println(strings.Join(headers, "\t| "))
 		fmt.Println(strings.Repeat("----", len(headers)*2))
@@ -89,15 +87,14 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		} else {
 			for _, row := range rows {
 				var rowValues []string
-				for _, col := range schema.Columns {
-					val, _ := row[col.Name]
+				for _, colName := range headers {
+					val, _ := row[colName]
 					rowValues = append(rowValues, fmt.Sprintf("%v", val))
 				}
 				fmt.Println(strings.Join(rowValues, "\t| "))
 			}
 			fmt.Printf("\n(%d rows)\n", len(rows))
-		}
-	},
+		}	},
 }
 
 func init() {

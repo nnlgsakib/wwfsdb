@@ -1,57 +1,121 @@
 package ast
 
+// Expression represents a node in the expression tree.	
+
+type Expression interface {
+	isExpression()
+}
+
+// BinaryExpr represents a binary operation (e.g., AND, OR).	
+
+type BinaryExpr struct {
+	Left     Expression
+	Operator string
+	Right    Expression
+}
+
+// ComparisonExpr represents a comparison operation (e.g., =, >, <).	
+
+type ComparisonExpr struct {
+	Left     Expression
+	Operator string
+	Right    Expression
+}
+
+// LikeExpr represents a LIKE expression.	
+
+type LikeExpr struct {
+	Left    Expression
+	Pattern Expression
+}
+
+// InExpr represents an IN expression.	
+
+type InExpr struct {
+	Left   Expression
+	Values []Expression
+}
+
+// Literal represents a string or number literal.	
+
+type Literal struct {
+	Value string
+}
+
+// NumberLiteral represents a numeric literal.
+
+type NumberLiteral struct {
+	Value float64
+}
+
+// Identifier represents a column name.	
+
+type Identifier struct {
+	Name string
+}
+
+func (BinaryExpr) isExpression()     {}
+func (ComparisonExpr) isExpression() {}
+func (LikeExpr) isExpression()       {}
+func (InExpr) isExpression()         {}
+func (Literal) isExpression()        {}
+func (NumberLiteral) isExpression()  {}
+func (Identifier) isExpression()      {}
+
 // Column represents a column in a table
 type Column struct {
-    Name string `json:"name"`
-    Type string `json:"type"`
+	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // Schema represents the schema of a table
 type Schema struct {
-    Columns []Column `json:"columns"`
-}
-
-// WhereClause represents a WHERE clause in a SQL statement
-type WhereClause struct {
-    Column string
-    Value  string
+	Columns []Column `json:"columns"`
 }
 
 // UpdateClause represents a SET clause in an UPDATE statement
 type UpdateClause struct {
-    Column string
-    Value  string
+	Column string
+	Value  string
 }
 
 // Node is a marker interface for AST nodes
 type Node interface{ isNode() }
 
 // Statement is a marker interface for SQL statements
-type Statement interface{ Node; isStatement() }
+type Statement interface {
+	Node
+	isStatement()
+}
 
 // Basic statement node wrappers (placeholders for future rich AST)
 type (
-    CreateDatabaseStmt struct{ Name string }
-    CreateTableStmt struct{ Name string; Schema Schema }
-    DropTableStmt struct{ Name string }
-    SelectStmt struct{ Table string; Where *WhereClause }
-    InsertStmt struct{ Table string; Values []string }
-    UpdateStmt struct{ Table string; Set UpdateClause; Where WhereClause }
-    DeleteStmt struct{ Table string; Where WhereClause }
+	CreateDatabaseStmt struct{ Name string }
+	CreateTableStmt    struct{ Name string; Schema Schema }
+	DropTableStmt      struct{ Name string }
+	SelectStmt         struct {
+		Table   string
+		Columns []string // New field for selected columns
+		Where   Expression
+	}
+	InsertStmt struct{ Table string; Values []string }
+	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
+	DeleteStmt struct{ Table string; Where Expression }
 )
 
 func (CreateDatabaseStmt) isNode() {}
 func (CreateDatabaseStmt) isStatement() {}
-func (CreateTableStmt) isNode() {}
+func (CreateTableStmt) isNode()    {}
 func (CreateTableStmt) isStatement() {}
-func (DropTableStmt) isNode() {}
+func (DropTableStmt) isNode()      {}
 func (DropTableStmt) isStatement() {}
-func (SelectStmt) isNode() {}
-func (SelectStmt) isStatement() {}
-func (InsertStmt) isNode() {}
-func (InsertStmt) isStatement() {}
-func (UpdateStmt) isNode() {}
-func (UpdateStmt) isStatement() {}
-func (DeleteStmt) isNode() {}
-func (DeleteStmt) isStatement() {}
+func (SelectStmt) isNode()        {}
+func (SelectStmt) isStatement()     {}
+func (InsertStmt) isNode()        {}
+func (InsertStmt) isStatement()     {}
+func (UpdateStmt) isNode()        {}
+func (UpdateStmt) isStatement()     {}
+func (DeleteStmt) isNode()        {}
+func (DeleteStmt) isStatement()     {}
+
 

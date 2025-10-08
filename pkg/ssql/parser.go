@@ -2,6 +2,7 @@ package ssql
 
 import (
 	"fmt"
+	"strconv"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/lexer"
 	"strings"
@@ -13,6 +14,44 @@ type Parser struct {
 
 	curToken  lexer.Token
 	peekToken lexer.Token
+
+	prefixParseFns map[lexer.TokenType]prefixParseFn
+	infixParseFns  map[lexer.TokenType]infixParseFn
+}
+
+const (
+	_ int = iota
+	LOWEST
+	EQUALS      // ==
+	LESSGREATER // > or <
+	SUM         // +
+	PRODUCT     // *
+	PREFIX      // -X or !X
+	CALL        // myFunction(X)
+)
+
+var precedences = map[lexer.TokenType]int{
+	lexer.ASSIGN:   EQUALS,
+	lexer.NE:       EQUALS,
+	lexer.LT:       LESSGREATER,
+	lexer.GT:       LESSGREATER,
+	lexer.AND:      EQUALS,
+	lexer.OR:       EQUALS,
+	lexer.LIKE:     EQUALS,
+	lexer.IN:       EQUALS,
+}
+
+type (
+	prefixParseFn func() ast.Expression
+	infixParseFn  func(ast.Expression) ast.Expression
+)
+
+func (p *Parser) registerPrefix(tokenType lexer.TokenType, fn prefixParseFn) {
+	p.prefixParseFns[tokenType] = fn
+}
+
+func (p *Parser) registerInfix(tokenType lexer.TokenType, fn infixParseFn) {
+	p.infixParseFns[tokenType] = fn
 }
 
 func NewParser(l *lexer.Lexer) *Parser {
@@ -21,11 +60,149 @@ func NewParser(l *lexer.Lexer) *Parser {
 		errors: []string{},
 	}
 
+	p.prefixParseFns = make(map[lexer.TokenType]prefixParseFn)
+	p.registerPrefix(lexer.IDENT, p.parseIdentifier)
+	p.registerPrefix(lexer.STRING, p.parseStringLiteral)
+	p.registerPrefix(lexer.NUMBER, p.parseNumberLiteral)
+
+	p.infixParseFns = make(map[lexer.TokenType]infixParseFn)
+	p.registerInfix(lexer.ASSIGN, p.parseInfixExpression)
+	p.registerInfix(lexer.NE, p.parseInfixExpression)
+	p.registerInfix(lexer.LT, p.parseInfixExpression)
+	p.registerInfix(lexer.GT, p.parseInfixExpression)
+	p.registerInfix(lexer.AND, p.parseInfixExpression)
+	p.registerInfix(lexer.OR, p.parseInfixExpression)
+	p.registerInfix(lexer.LIKE, p.parseLikeExpression)
+	p.registerInfix(lexer.IN, p.parseInExpression)
+
 	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
 	p.nextToken()
 
 	return p
+}
+
+func (p *Parser) parseIdentifier() ast.Expression {
+	return &ast.Identifier{Name: p.curToken.Literal}
+}
+
+func (p *Parser) parseStringLiteral() ast.Expression {
+	return &ast.Literal{Value: p.curToken.Literal}
+}
+
+func (p *Parser) parseNumberLiteral() ast.Expression {
+	lit := &ast.NumberLiteral{}
+	val, err := strconv.ParseFloat(p.curToken.Literal, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as float", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+	lit.Value = val
+	return lit
+}
+
+func (p *Parser) parseExpression(precedence int) ast.Expression {
+	prefix := p.prefixParseFns[p.curToken.Type]
+	if prefix == nil {
+		p.noPrefixParseFnError(p.curToken.Type)
+		return nil
+	}
+	leftExp := prefix()
+
+	for !p.peekTokenIs(lexer.SEMICOLON) && precedence < p.peekPrecedence() {
+		infix := p.infixParseFns[p.peekToken.Type]
+		if infix == nil {
+			return leftExp
+		}
+
+		p.nextToken()
+
+		leftExp = infix(leftExp)
+	}
+
+	return leftExp
+}
+
+func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
+	if p.curToken.Type == lexer.AND || p.curToken.Type == lexer.OR {
+		expression := &ast.BinaryExpr{
+			Left:     left,
+			Operator: p.curToken.Literal,
+		}
+		precedence := p.curPrecedence()
+		p.nextToken()
+		expression.Right = p.parseExpression(precedence)
+		return expression
+	}
+
+	expression := &ast.ComparisonExpr{
+		Left:     left,
+		Operator: p.curToken.Literal,
+	}
+
+	precedence := p.curPrecedence()
+	p.nextToken()
+	expression.Right = p.parseExpression(precedence)
+
+	return expression
+}
+
+func (p *Parser) parseLikeExpression(left ast.Expression) ast.Expression {
+	expression := &ast.LikeExpr{
+		Left: left,
+	}
+	precedence := p.curPrecedence()
+	p.nextToken()
+	expression.Pattern = p.parseExpression(precedence)
+	return expression
+}
+
+func (p *Parser) parseInExpression(left ast.Expression) ast.Expression {
+	expression := &ast.InExpr{Left: left}
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+	expression.Values = p.parseInExpressionList()
+	return expression
+}
+
+func (p *Parser) parseInExpressionList() []ast.Expression {
+	list := []ast.Expression{}
+	if p.peekTokenIs(lexer.RPAREN) {
+		p.nextToken()
+		return list
+	}
+	p.nextToken()
+	list = append(list, p.parseExpression(LOWEST))
+	for p.peekTokenIs(lexer.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		list = append(list, p.parseExpression(LOWEST))
+	}
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+	return list
+}
+
+func (p *Parser) peekPrecedence() int {
+	if p, ok := precedences[p.peekToken.Type]; ok {
+		return p
+	}
+	return LOWEST
+}
+
+func (p *Parser) curPrecedence() int {
+	if p, ok := precedences[p.curToken.Type]; ok {
+		return p
+	}
+	return LOWEST
+}
+
+func (p *Parser) noPrefixParseFnError(t lexer.TokenType) {
+	msg := fmt.Sprintf("no prefix parse function for %s found", t)
+	p.errors = append(p.errors, msg)
 }
 
 func (p *Parser) Errors() []string {
@@ -140,7 +317,7 @@ func (p *Parser) parseColumnDefinitions() []ast.Column {
 	if p.peekTokenIs(lexer.LPAREN) {
 		p.nextToken() // consume '('
 		col.Type += "("
-		if p.peekTokenIs(lexer.IDENT) {
+		if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.NUMBER) {
 			p.nextToken() // consume length
 			col.Type += p.curToken.Literal
 		}
@@ -170,7 +347,7 @@ func (p *Parser) parseColumnDefinitions() []ast.Column {
 		if p.peekTokenIs(lexer.LPAREN) {
 			p.nextToken() // consume '('
 			col.Type += "("
-			if p.peekTokenIs(lexer.IDENT) {
+			if p.peekTokenIs(lexer.IDENT) || p.peekTokenIs(lexer.NUMBER) {
 				p.nextToken() // consume length
 				col.Type += p.curToken.Literal
 			}
@@ -202,15 +379,19 @@ func (p *Parser) parseDropStatement() *ast.DropTableStmt {
 
 func (p *Parser) parseSelectStatement() *ast.SelectStmt {
 	stmt := &ast.SelectStmt{}
-	if !p.expectPeek(lexer.ASTERISK) {
-		return nil
+
+	if p.peekTokenIs(lexer.ASTERISK) {
+		p.nextToken()
+		stmt.Columns = []string{"*"} // Use a special value to indicate all columns
+	} else {
+		stmt.Columns = p.parseIdentifierList()
 	}
+
 	if !p.expectPeek(lexer.FROM) {
 		return nil
 	}
 	if !p.expectPeek(lexer.IDENT) {
-		return nil
-	}
+		return nil	}
 	stmt.Table = p.curToken.Literal
 
 	if p.peekTokenIs(lexer.WHERE) {
@@ -225,26 +406,37 @@ func (p *Parser) parseSelectStatement() *ast.SelectStmt {
 	return stmt
 }
 
-func (p *Parser) parseWhereClause() *ast.WhereClause {
-	p.nextToken() // consume WHERE
-	where := &ast.WhereClause{}
+func (p *Parser) parseIdentifierList() []string {
+	list := []string{}
 
+	if p.peekTokenIs(lexer.FROM) {
+		p.errors = append(p.errors, "expected identifier or '*' after SELECT")
+		return nil
+	}
+
+	p.nextToken()
 	if p.curToken.Type != lexer.IDENT {
-		p.errors = append(p.errors, "expected column name in WHERE clause")
+		p.errors = append(p.errors, "expected identifier in column list")
 		return nil
 	}
-	where.Column = p.curToken.Literal
+	list = append(list, p.curToken.Literal)
 
-	if !p.expectPeek(lexer.ASSIGN) {
-		return nil
+	for p.peekTokenIs(lexer.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		if p.curToken.Type != lexer.IDENT {
+			p.errors = append(p.errors, "expected identifier in column list")
+			return nil
+		}
+		list = append(list, p.curToken.Literal)
 	}
 
-	if !p.expectPeek(lexer.STRING) {
-		return nil
-	}
-	where.Value = p.curToken.Literal
+	return list
+}
 
-	return where
+func (p *Parser) parseWhereClause() ast.Expression {
+	p.nextToken() // consume WHERE
+	return p.parseExpression(LOWEST)
 }
 
 func (p *Parser) parseInsertStatement() *ast.InsertStmt {
@@ -340,7 +532,7 @@ func (p *Parser) parseUpdateStatement() *ast.UpdateStmt {
 	if !p.expectPeek(lexer.WHERE) {
 		return nil
 	}
-	stmt.Where = *p.parseWhereClause()
+	stmt.Where = p.parseWhereClause()
 
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
@@ -362,7 +554,7 @@ func (p *Parser) parseDeleteStatement() *ast.DeleteStmt {
 	if !p.expectPeek(lexer.WHERE) {
 		return nil
 	}
-	stmt.Where = *p.parseWhereClause()
+	stmt.Where = p.parseWhereClause()
 
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
