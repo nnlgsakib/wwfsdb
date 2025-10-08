@@ -11,8 +11,11 @@ import (
 	"strings"
 
 	shell "github.com/ipfs/go-ipfs-api"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
 	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // Insert adds a new row to a table
@@ -38,8 +41,8 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 	}
 
 	// 4. Create the new row
-	row := make(map[string]interface{})
-	schema, err := LoadSchema(sh, table.SchemaCID)
+	row := &pb.Row{Values: make(map[string]*anypb.Any)}
+	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
 		return err
 	}
@@ -54,7 +57,7 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 		if err != nil {
 			return fmt.Errorf("validation error for column '%s': %w", col.Name, err)
 		}
-		row[col.Name] = val
+		row.Values[col.Name] = val
 	}
 
 	// 5. Add the new row to IPFS
@@ -124,7 +127,7 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 	}
 
 	// 5. Load the schema
-	schema, err := LoadSchema(sh, table.SchemaCID)
+	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
 		return nil, err
 	}
@@ -147,11 +150,19 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 			resultRow := make(map[string]interface{})
 			if len(columns) == 1 && columns[0] == "*" {
 				for _, col := range schema.Columns {
-					resultRow[col.Name] = row[col.Name]
+					val, err := FromAny(row.Values[col.Name])
+					if err != nil {
+						return nil, err
+					}
+					resultRow[col.Name] = val
 				}
 			} else {
 				for _, colName := range columns {
-					resultRow[colName] = row[colName]
+					val, err := FromAny(row.Values[colName])
+					if err != nil {
+						return nil, err
+					}
+					resultRow[colName] = val
 				}
 			}
 			results = append(results, resultRow)
@@ -163,7 +174,7 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 
 // findCandidateRows tries to use an index to narrow down the list of rows to scan.
 // If it can't use an index, it returns all row CIDs for a full table scan.
-func findCandidateRows(sh *shell.Shell, table *Table, where ast.Expression) ([]string, error) {
+func findCandidateRows(sh *shell.Shell, table *pb.Table, where ast.Expression) ([]string, error) {
 	// Check if we can use an index. For now, we only support simple `col = val` queries.
 	if comp, ok := where.(*ast.ComparisonExpr); ok && comp.Operator == "=" {
 		if ident, ok := comp.Left.(*ast.Identifier); ok {
@@ -171,22 +182,17 @@ func findCandidateRows(sh *shell.Shell, table *Table, where ast.Expression) ([]s
 				// Index exists for this column. Let's try to use it.
 				if lit, ok := comp.Right.(*ast.Literal); ok {
 					// Load the index
-					indexData, err := sh.Cat(indexCID)
+					index, err := LoadIndex(sh, indexCID)
 					if err != nil {
 						return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
-					}
-					defer indexData.Close()
-					var index Index
-					if err := json.NewDecoder(indexData).Decode(&index); err != nil {
-						return nil, fmt.Errorf("failed to decode index %s: %w", indexCID, err)
 					}
 
 					// The key needs to be validated and cast just like during insertion
 					// For now, we'll just use the literal string value. This is a simplification
 					// and might not work for all types without proper casting.
 					key := lit.Value
-					if cids, ok := index[key]; ok {
-						return cids, nil // Found candidate rows from index!
+					if node, ok := index.Nodes[key]; ok {
+						return node.Cids, nil // Found candidate rows from index!
 					} else {
 						return []string{}, nil // Value not in index, so no results
 					}
@@ -199,7 +205,7 @@ func findCandidateRows(sh *shell.Shell, table *Table, where ast.Expression) ([]s
 	return table.Rows, nil
 }
 
-func evaluateExpression(row map[string]interface{}, expr ast.Expression) (bool, error) {
+func evaluateExpression(row *pb.Row, expr ast.Expression) (bool, error) {
 	if expr == nil {
 		return true, nil
 	}
@@ -343,11 +349,6 @@ func getNumericValue(v interface{}) (float64, bool) {
 		return val, true
 	case int64:
 		return float64(val), true
-	case json.Number:
-		f, err := val.Float64()
-		if err == nil {
-			return f, true
-		}
 	case string:
 		f, err := strconv.ParseFloat(val, 64)
 		if err == nil {
@@ -357,10 +358,14 @@ func getNumericValue(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-func evaluateExpressionValue(row map[string]interface{}, expr ast.Expression) (interface{}, error) {
+func evaluateExpressionValue(row *pb.Row, expr ast.Expression) (interface{}, error) {
 	switch e := expr.(type) {
 	case *ast.Identifier:
-		return row[e.Name], nil
+		anyVal, ok := row.Values[e.Name]
+		if !ok {
+			return nil, fmt.Errorf("column %s not found in row", e.Name)
+		}
+		return FromAny(anyVal)
 	case *ast.Literal:
 		return e.Value, nil
 	case *ast.NumberLiteral:
@@ -373,7 +378,7 @@ func evaluateExpressionValue(row map[string]interface{}, expr ast.Expression) (i
 }
 
 // LoadDatabase loads a database from IPFS
-func LoadDatabase(sh *shell.Shell, dbName string) (*Database, error) {
+func LoadDatabase(sh *shell.Shell, dbName string) (*pb.Database, error) {
 	var dbCID string
 	var err error
 
@@ -388,13 +393,13 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*Database, error) {
 			return nil, fmt.Errorf("database %s not found in registry", dbName)
 		}
 
-		var entry RegistryEntry
-		if err := json.Unmarshal(entryData, &entry); err != nil {
+		var entry pb.RegistryEntry
+		if err := proto.Unmarshal(entryData, &entry); err != nil {
 			return nil, err
 		}
 
 		// 3. Resolve the IPNS name to get the database CID
-		dbCID, err = sh.Resolve(entry.ProgramID)
+		dbCID, err = sh.Resolve(entry.ProgramId)
 		if err != nil {
 			return nil, err
 		}
@@ -410,9 +415,12 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*Database, error) {
 	}
 	defer data.Close()
 
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(data)
+
 	// 6. Decode the database object
-	var db Database
-	if err := json.NewDecoder(data).Decode(&db); err != nil {
+	var db pb.Database
+	if err := proto.Unmarshal(buf.Bytes(), &db); err != nil {
 		return nil, err
 	}
 
@@ -420,15 +428,18 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*Database, error) {
 }
 
 // LoadTable loads a table from IPFS
-func LoadTable(sh *shell.Shell, tableCID string) (*Table, error) {
+func LoadTable(sh *shell.Shell, tableCID string) (*pb.Table, error) {
 	data, err := sh.Cat(tableCID)
 	if err != nil {
 		return nil, err
 	}
 	defer data.Close()
 
-	var table Table
-	if err := json.NewDecoder(data).Decode(&table); err != nil {
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(data)
+
+	var table pb.Table
+	if err := proto.Unmarshal(buf.Bytes(), &table); err != nil {
 		return nil, err
 	}
 
@@ -436,15 +447,18 @@ func LoadTable(sh *shell.Shell, tableCID string) (*Table, error) {
 }
 
 // LoadSchema loads a schema from IPFS
-func LoadSchema(sh *shell.Shell, schemaCID string) (*ssql.Schema, error) {
+func LoadSchema(sh *shell.Shell, schemaCID string) (*pb.Schema, error) {
 	data, err := sh.Cat(schemaCID)
 	if err != nil {
 		return nil, err
 	}
 	defer data.Close()
 
-	var schema ssql.Schema
-	if err := json.NewDecoder(data).Decode(&schema); err != nil {
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(data)
+
+	var schema pb.Schema
+	if err := proto.Unmarshal(buf.Bytes(), &schema); err != nil {
 		return nil, err
 	}
 
@@ -452,24 +466,27 @@ func LoadSchema(sh *shell.Shell, schemaCID string) (*ssql.Schema, error) {
 }
 
 // LoadRow loads a row from IPFS
-func LoadRow(sh *shell.Shell, rowCID string) (map[string]interface{}, error) {
+func LoadRow(sh *shell.Shell, rowCID string) (*pb.Row, error) {
 	data, err := sh.Cat(rowCID)
 	if err != nil {
 		return nil, err
 	}
 	defer data.Close()
 
-	var row map[string]interface{}
-	if err := json.NewDecoder(data).Decode(&row); err != nil {
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(data)
+
+	var row pb.Row
+	if err := proto.Unmarshal(buf.Bytes(), &row); err != nil {
 		return nil, err
 	}
 
-	return row, nil
+	return &row, nil
 }
 
 // AddObject adds a generic object to IPFS and returns its CID
-func AddObject(sh *shell.Shell, obj interface{}) (string, error) {
-	data, err := json.Marshal(obj)
+func AddObject(sh *shell.Shell, obj proto.Message) (string, error) {
+	data, err := proto.Marshal(obj)
 	if err != nil {
 		return "", err
 	}
@@ -493,8 +510,8 @@ func Publish(sh *shell.Shell, dbName, cid string) error {
 		return fmt.Errorf("database %s not found in registry", dbName)
 	}
 
-	var entry RegistryEntry
-	if err := json.Unmarshal(entryData, &entry); err != nil {
+	var entry pb.RegistryEntry
+	if err := proto.Unmarshal(entryData, &entry); err != nil {
 		return err
 	}
 
@@ -507,7 +524,7 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Create a new database
-	db := &Database{
+	db := &pb.Database{
 		Tables: make(map[string]string),
 	}
 
@@ -532,12 +549,12 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 	}()
 
 	// 5. Save the database info to the registry
-	entry := RegistryEntry{
+	entry := &pb.RegistryEntry{
 		DbName:    dbName,
-		ProgramID: key.Id,
+		ProgramId: key.Id,
 		KeyName:   key.Name,
 	}
-	entryData, err := json.Marshal(entry)
+	entryData, err := proto.Marshal(entry)
 	if err != nil {
 		return "", err
 	}
@@ -603,9 +620,10 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 			return "", err
 		}
 
+		// Use json.Marshal to correctly handle types
 		jsonResult, err := json.Marshal(rows)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to marshal result to JSON: %w", err)
 		}
 
 		return string(jsonResult), nil
@@ -649,15 +667,19 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
-	// 1. Add the schema to IPFS
-	schemaCID, err := AddObject(sh, schema)
+	// 1. Convert ssql.Schema to pb.Schema and add to IPFS
+	pbSchema := &pb.Schema{}
+	for _, col := range schema.Columns {
+		pbSchema.Columns = append(pbSchema.Columns, &pb.Column{Name: col.Name, Type: col.Type})
+	}
+	schemaCID, err := AddObject(sh, pbSchema)
 	if err != nil {
 		return "", err
 	}
 
 	// 2. Create a new table
-	table := &Table{
-		SchemaCID: schemaCID,
+	table := &pb.Table{
+		SchemaCid: schemaCID,
 		Rows:      []string{},
 		Indexes:   make(map[string]string),
 	}
@@ -672,6 +694,10 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
 		return "", err
+	}
+
+	if db.Tables == nil {
+		db.Tables = make(map[string]string)
 	}
 
 	// 5. Add the new table to the database
@@ -747,7 +773,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 	}
 
 	// 4. Load the schema to get column types
-	schema, err := LoadSchema(sh, table.SchemaCID)
+	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
 		return err
 	}
@@ -783,38 +809,36 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 			return err
 		}
 
-					if include {
-						// Capture old state for index update
-						oldRow := make(map[string]interface{})
-						for k, v := range row {
-							oldRow[k] = v
-						}
-		
-						// First, update indexes as if the old row is being deleted
-						table, err = UpdateIndexesOnDelete(sh, table, rowCID, oldRow)
-						if err != nil {
-							return fmt.Errorf("failed to update indexes on delete part of update: %w", err)
-						}
-		
-						// Update the row data with the new value
-						row[setColumn] = castedValue
-		
-						// Add the updated row to IPFS to get a new CID
-						newRowCID, err := AddObject(sh, row)
-						if err != nil {
-							return err
-						}
-		
-						// Now, update indexes as if the new row is being inserted
-						table, err = UpdateIndexesOnInsert(sh, table, newRowCID, row)
-						if err != nil {
-							return fmt.Errorf("failed to update indexes on insert part of update: %w", err)
-						}
-		
-						// Update the table with the new row CID
-						table.Rows[i] = newRowCID
-						updated = true
-					}	}
+		if include {
+			// Capture old state for index update
+			oldRow := proto.Clone(row).(*pb.Row)
+
+			// First, update indexes as if the old row is being deleted
+			table, err = UpdateIndexesOnDelete(sh, table, rowCID, oldRow)
+			if err != nil {
+				return fmt.Errorf("failed to update indexes on delete part of update: %w", err)
+			}
+
+			// Update the row data with the new value
+			row.Values[setColumn] = castedValue
+
+			// Add the updated row to IPFS to get a new CID
+			newRowCID, err := AddObject(sh, row)
+			if err != nil {
+				return err
+			}
+
+			// Now, update indexes as if the new row is being inserted
+			table, err = UpdateIndexesOnInsert(sh, table, newRowCID, row)
+			if err != nil {
+				return fmt.Errorf("failed to update indexes on insert part of update: %w", err)
+			}
+
+			// Update the table with the new row CID
+			table.Rows[i] = newRowCID
+			updated = true
+		}
+	}
 
 	if !updated {
 		return fmt.Errorf("no rows found to update")

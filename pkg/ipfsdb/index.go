@@ -1,15 +1,33 @@
 package ipfsdb
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
 
 	shell "github.com/ipfs/go-ipfs-api"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// Index represents the structure of an index object stored in IPFS.
-// It maps a value from a column to a list of row CIDs that contain that value.
-type Index map[string][]string
+// LoadIndex loads an index from IPFS
+func LoadIndex(sh *shell.Shell, indexCID string) (*pb.Index, error) {
+	data, err := sh.Cat(indexCID)
+	if err != nil {
+		return nil, err
+	}
+	defer data.Close()
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(data)
+
+	var index pb.Index
+	if err := proto.Unmarshal(buf.Bytes(), &index); err != nil {
+		return nil, err
+	}
+
+	return &index, nil
+}
 
 // CreateIndex builds and saves a new index for a specific column in a table.
 func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
@@ -35,7 +53,7 @@ func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 	}
 
 	// 3. Load schema and validate column
-	schema, err := LoadSchema(sh, table.SchemaCID)
+	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
 		return err
 	}
@@ -51,21 +69,28 @@ func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 	}
 
 	// 4. Build the index from existing rows
-	newIndex := make(Index)
+	newIndex := &pb.Index{Nodes: make(map[string]*pb.IndexNode)}
 	for _, rowCID := range table.Rows {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
 			return fmt.Errorf("failed to load row %s: %w", rowCID, err)
 		}
-		val, ok := row[columnName]
+		val, ok := row.Values[columnName]
 		if !ok {
 			// Column value doesn't exist for this row, skip it
 			continue
 		}
 
 		// Keys in a JSON map must be strings. We format the value to a string to use as a key.
-		key := fmt.Sprintf("%v", val)
-		newIndex[key] = append(newIndex[key], rowCID)
+		key, err := valueToString(val)
+		if err != nil {
+			return fmt.Errorf("failed to convert value to string for index key: %w", err)
+		}
+
+		if _, ok := newIndex.Nodes[key]; !ok {
+			newIndex.Nodes[key] = &pb.IndexNode{}
+		}
+		newIndex.Nodes[key].Cids = append(newIndex.Nodes[key].Cids, rowCID)
 	}
 
 	// 5. Save the new index to IPFS
@@ -101,32 +126,33 @@ func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 }
 
 // UpdateIndexesOnInsert updates all relevant indexes when a new row is added.
-func UpdateIndexesOnInsert(sh *shell.Shell, table *Table, rowCID string, rowData map[string]interface{}) (*Table, error) {
+func UpdateIndexesOnInsert(sh *shell.Shell, table *pb.Table, rowCID string, rowData *pb.Row) (*pb.Table, error) {
 	if len(table.Indexes) == 0 {
 		return table, nil // No indexes to update
 	}
 
 	for colName, indexCID := range table.Indexes {
-		val, ok := rowData[colName]
+		val, ok := rowData.Values[colName]
 		if !ok {
 			continue // This row doesn't have a value for the indexed column
 		}
 
 		// Load the existing index
-		indexData, err := sh.Cat(indexCID)
+		index, err := LoadIndex(sh, indexCID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
 		}
-		var index Index
-		if err := json.NewDecoder(indexData).Decode(&index); err != nil {
-			indexData.Close()
-			return nil, fmt.Errorf("failed to decode index %s: %w", indexCID, err)
-		}
-		indexData.Close()
 
 		// Add the new row CID to the index
-		key := fmt.Sprintf("%v", val)
-		index[key] = append(index[key], rowCID)
+		key, err := valueToString(val)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert value to string for index key: %w", err)
+		}
+
+		if _, ok := index.Nodes[key]; !ok {
+			index.Nodes[key] = &pb.IndexNode{}
+		}
+		index.Nodes[key].Cids = append(index.Nodes[key].Cids, rowCID)
 
 		// Save the updated index back to IPFS
 		newIndexCID, err := AddObject(sh, index)
@@ -142,42 +168,40 @@ func UpdateIndexesOnInsert(sh *shell.Shell, table *Table, rowCID string, rowData
 }
 
 // UpdateIndexesOnDelete updates all relevant indexes when a row is deleted.
-func UpdateIndexesOnDelete(sh *shell.Shell, table *Table, rowCID string, rowData map[string]interface{}) (*Table, error) {
+func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, rowCID string, rowData *pb.Row) (*pb.Table, error) {
 	if len(table.Indexes) == 0 {
 		return table, nil // No indexes to update
 	}
 
 	for colName, indexCID := range table.Indexes {
-		val, ok := rowData[colName]
+		val, ok := rowData.Values[colName]
 		if !ok {
 			continue // This row doesn't have a value for the indexed column
 		}
 
 		// Load the existing index
-		indexData, err := sh.Cat(indexCID)
+		index, err := LoadIndex(sh, indexCID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
 		}
-		var index Index
-		if err := json.NewDecoder(indexData).Decode(&index); err != nil {
-			indexData.Close()
-			return nil, fmt.Errorf("failed to decode index %s: %w", indexCID, err)
-		}
-		indexData.Close()
 
 		// Remove the row CID from the index
-		key := fmt.Sprintf("%v", val)
-		if cids, ok := index[key]; ok {
+		key, err := valueToString(val)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert value to string for index key: %w", err)
+		}
+
+		if node, ok := index.Nodes[key]; ok {
 			newCIDs := []string{}
-			for _, cid := range cids {
+			for _, cid := range node.Cids {
 				if cid != rowCID {
 					newCIDs = append(newCIDs, cid)
 				}
 			}
 			if len(newCIDs) == 0 {
-				delete(index, key)
+				delete(index.Nodes, key)
 			} else {
-				index[key] = newCIDs
+				node.Cids = newCIDs
 			}
 		}
 
@@ -192,5 +216,13 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *Table, rowCID string, rowData
 	}
 
 	return table, nil
+}
+
+func valueToString(any *anypb.Any) (string, error) {
+	val, err := FromAny(any)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%v", val), nil
 }
 

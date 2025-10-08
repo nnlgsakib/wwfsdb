@@ -58,7 +58,7 @@ With a stable foundation, this stage focuses on adding powerful new capabilities
 
 This stage is focused on internal improvements that make the project faster, more reliable, and easier to work on.
 
-- [ ] **1. Adopt Protocol Buffers for IPFS Data:**
+- [✅] **1. Adopt Protocol Buffers for IPFS Data:**
   - **Problem:** Storing data as JSON in IPFS is verbose and slow to parse.
   - **Solution:** Define `.proto` schemas for all internal data structures (`Database`, `Table`, `Row`) and use Protocol Buffers for serialization. This will reduce storage size, improve performance, and help enforce the data types defined in Stage 2.
 

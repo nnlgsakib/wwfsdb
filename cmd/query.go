@@ -1,16 +1,18 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
-	    shell "github.com/ipfs/go-ipfs-api"
-	    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
-	    "github.com/spf13/cobra"
-	)
+	shell "github.com/ipfs/go-ipfs-api"
+	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/spf13/cobra"
+)
+
 // queryCmd represents the query command
 var queryCmd = &cobra.Command{
 	Use:   "query [db_name] [query_string]",
@@ -63,7 +65,7 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
-		schema, err := ipfsdb.LoadSchema(sh, table.SchemaCID)
+		schema, err := ipfsdb.LoadSchema(sh, table.SchemaCid)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
@@ -89,12 +91,19 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 				var rowValues []string
 				for _, colName := range headers {
 					val, _ := row[colName]
-					rowValues = append(rowValues, fmt.Sprintf("%v", val))
+					// To handle different types, we can marshal to JSON
+					jsonVal, err := json.Marshal(val)
+					if err != nil {
+						rowValues = append(rowValues, fmt.Sprintf("ERR"))
+					} else {
+						rowValues = append(rowValues, string(jsonVal))
+					}
 				}
 				fmt.Println(strings.Join(rowValues, "\t| "))
 			}
 			fmt.Printf("\n(%d rows)\n", len(rows))
-		}	},
+		}
+	},
 }
 
 func init() {

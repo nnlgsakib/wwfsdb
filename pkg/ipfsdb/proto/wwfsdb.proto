@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto";
+
+import "google/protobuf/any.proto";
+
+// Column represents a column in a table's schema.
+message Column {
+  string name = 1;
+  string type = 2;
+}
+
+// Schema represents the schema of a table.
+message Schema {
+  repeated Column columns = 1;
+}
+
+// Row represents a single row of data in a table.
+// The keys of the 'values' map are column names.
+message Row {
+  map<string, google.protobuf.Any> values = 1;
+}
+
+// Table represents a table in the database.
+message Table {
+  string schema_cid = 1;
+  repeated string rows = 2;       // CIDs of Row objects
+  map<string, string> indexes = 3; // map[column_name]index_cid
+}
+
+// Database represents the entire database.
+message Database {
+  map<string, string> tables = 1; // map[table_name]table_cid
+}
+
+// IndexNode contains a list of CIDs for a given index key.
+message IndexNode {
+    repeated string cids = 1;
+}
+
+// Index represents an index on a column.
+// It maps a value (as a string) to a list of row CIDs.
+message Index {
+    map<string, IndexNode> nodes = 1;
+}
+
+// RegistryEntry defines the structure for an entry in the registry.
+message RegistryEntry {
+	string db_name = 1;
+	string program_id = 2; // The IPNS Name (Key ID)
+	string key_name = 3;   // The local key name
+}
