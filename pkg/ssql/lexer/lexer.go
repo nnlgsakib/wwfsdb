@@ -52,6 +52,8 @@ const (
 	OR       = "OR"
 	LIKE     = "LIKE"
 	IN       = "IN"
+	INDEX    = "INDEX"
+	ON       = "ON"
 	TRUE     = "TRUE"
 	FALSE    = "FALSE"
 )
@@ -74,6 +76,8 @@ var keywords = map[string]TokenType{
 	"OR":       OR,
 	"LIKE":     LIKE,
 	"IN":       IN,
+	"INDEX":    INDEX,
+	"ON":       ON,
 	"TRUE":     TRUE,
 	"FALSE":    FALSE,
 }

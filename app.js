@@ -240,6 +240,39 @@ async function runRegressionTests() {
     await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup2'`, [], 'Selects to confirm deletion');
 }
 
+async function runIndexingTests() {
+    console.log('\n--- 🧪 Running Indexing Tests ---\n');
+
+    console.log('  --- CREATE INDEX ---');
+    await assertCommandSuccess(`CREATE INDEX ON suppliers (name);`, 'Creates an index on the suppliers.name column');
+    await assertCommandFailure(`CREATE INDEX ON suppliers (name);`, 'Fails to create an index that already exists');
+    await assertCommandFailure(`CREATE INDEX ON suppliers (non_existent_column);`, 'Fails to create an index on a non-existent column');
+
+    console.log('\n  --- Query using Index ---');
+    await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier A'`, 
+        [{ "supplier_id": "sup1" }], 
+        'Selects using an index on the WHERE clause column');
+
+    console.log('\n  --- Index Maintenance ---');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup3', 'Supplier C', 'contact@supplierc.com', '3');`, 'Inserts a new supplier (should update index)');
+    await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier C'`, 
+        [{ "supplier_id": "sup3" }], 
+        'Selects new supplier using the index');
+
+    await assertCommandSuccess(`UPDATE suppliers SET name = 'Supplier C Updated' WHERE supplier_id = 'sup3';`, 'Updates a supplier name (should update index)');
+    await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier C Updated'`, 
+        [{ "supplier_id": "sup3" }], 
+        'Selects updated supplier using the index');
+    await assertQueryResult(`SELECT * FROM suppliers WHERE name = 'Supplier C'`, 
+        [], 
+        'Selects old name to confirm index update');
+
+    await assertCommandSuccess(`DELETE FROM suppliers WHERE name = 'Supplier A';`, 'Deletes a supplier (should update index)');
+    await assertQueryResult(`SELECT * FROM suppliers WHERE name = 'Supplier A'`, 
+        [], 
+        'Selects deleted supplier to confirm index update');
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -248,6 +281,7 @@ async function main() {
     await setupDatabase();
     await runDataTypeTests();
     await runRegressionTests();
+    await runIndexingTests();
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

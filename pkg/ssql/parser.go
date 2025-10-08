@@ -240,23 +240,25 @@ func (p *Parser) ParseStatement() ast.Statement {
 }
 
 func (p *Parser) parseCreateStatement() ast.Statement {
-	if p.peekTokenIs(lexer.DATABASE) {
-		p.nextToken() // consume CREATE
+	p.nextToken() // consume CREATE
+
+	switch p.curToken.Type {
+	case lexer.DATABASE:
 		return p.parseCreateDatabaseStatement()
-	}
-	if p.peekTokenIs(lexer.TABLE) {
-		p.nextToken() // consume CREATE
+	case lexer.TABLE:
 		return p.parseCreateTableStatement()
+	case lexer.INDEX:
+		return p.parseCreateIndexStatement()
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("expected DATABASE, TABLE, or INDEX after CREATE, got %s", p.curToken.Literal))
+		return nil
 	}
-	p.errors = append(p.errors, "expected DATABASE or TABLE after CREATE")
-	return nil
 }
 
 func (p *Parser) parseCreateDatabaseStatement() *ast.CreateDatabaseStmt {
-	p.nextToken() // consume DATABASE
 	stmt := &ast.CreateDatabaseStmt{}
 
-	if !p.curTokenIs(lexer.IDENT) {
+	if !p.expectPeek(lexer.IDENT) {
 		p.errors = append(p.errors, fmt.Sprintf("expected identifier for database name, got %s", p.curToken.Literal))
 		return nil
 	}
@@ -272,11 +274,9 @@ func (p *Parser) parseCreateDatabaseStatement() *ast.CreateDatabaseStmt {
 }
 
 func (p *Parser) parseCreateTableStatement() *ast.CreateTableStmt {
-	p.nextToken() // consume TABLE
 	stmt := &ast.CreateTableStmt{}
 
-	if !p.curTokenIs(lexer.IDENT) {
-		p.errors = append(p.errors, fmt.Sprintf("expected identifier for table name, got %s", p.curToken.Literal))
+	if !p.expectPeek(lexer.IDENT) {
 		return nil
 	}
 	stmt.Name = p.curToken.Literal
@@ -286,6 +286,39 @@ func (p *Parser) parseCreateTableStatement() *ast.CreateTableStmt {
 	}
 
 	stmt.Schema.Columns = p.parseColumnDefinitions()
+
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+
+	// Optional semicolon
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseCreateIndexStatement() *ast.CreateIndexStmt {
+	stmt := &ast.CreateIndexStmt{}
+
+	if !p.expectPeek(lexer.ON) {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	stmt.Table = p.curToken.Literal
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	stmt.Column = p.curToken.Literal
 
 	if !p.expectPeek(lexer.RPAREN) {
 		return nil

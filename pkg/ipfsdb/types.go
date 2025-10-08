@@ -2,8 +2,9 @@ package ipfsdb
 
 // Table represents a table in the database
 type Table struct {
-	SchemaCID string   `json:"schema_cid"`
-	Rows      []string `json:"rows"` // CIDs of row objects
+	SchemaCID string            `json:"schema_cid"`
+	Rows      []string          `json:"rows"`      // CIDs of row objects
+	Indexes   map[string]string `json:"indexes,omitempty"`   // map[column_name]index_cid
 }
 
 // Database represents the entire database

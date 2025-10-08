@@ -66,6 +66,12 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 	// 6. Update the table with the new row CID
 	table.Rows = append(table.Rows, rowCID)
 
+	// 7. Update indexes
+	table, err = UpdateIndexesOnInsert(sh, table, rowCID, row)
+	if err != nil {
+		return fmt.Errorf("failed to update indexes on insert: %w", err)
+	}
+
 	// 7. Update the table in IPFS
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
@@ -111,15 +117,21 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 		return nil, err
 	}
 
-	// 4. Load the schema
+	// 4. Find candidate rows (either from index or full scan)
+	rowCIDs, err := findCandidateRows(sh, table, where)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. Load the schema
 	schema, err := LoadSchema(sh, table.SchemaCID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Iterate over the rows and filter based on the WHERE clause
+	// 6. Iterate over the candidate rows and filter based on the WHERE clause
 	var results []map[string]interface{}
-	for _, rowCID := range table.Rows {
+	for _, rowCID := range rowCIDs {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
 			return nil, err
@@ -147,6 +159,44 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 	}
 
 	return results, nil
+}
+
+// findCandidateRows tries to use an index to narrow down the list of rows to scan.
+// If it can't use an index, it returns all row CIDs for a full table scan.
+func findCandidateRows(sh *shell.Shell, table *Table, where ast.Expression) ([]string, error) {
+	// Check if we can use an index. For now, we only support simple `col = val` queries.
+	if comp, ok := where.(*ast.ComparisonExpr); ok && comp.Operator == "=" {
+		if ident, ok := comp.Left.(*ast.Identifier); ok {
+			if indexCID, ok := table.Indexes[ident.Name]; ok {
+				// Index exists for this column. Let's try to use it.
+				if lit, ok := comp.Right.(*ast.Literal); ok {
+					// Load the index
+					indexData, err := sh.Cat(indexCID)
+					if err != nil {
+						return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
+					}
+					defer indexData.Close()
+					var index Index
+					if err := json.NewDecoder(indexData).Decode(&index); err != nil {
+						return nil, fmt.Errorf("failed to decode index %s: %w", indexCID, err)
+					}
+
+					// The key needs to be validated and cast just like during insertion
+					// For now, we'll just use the literal string value. This is a simplification
+					// and might not work for all types without proper casting.
+					key := lit.Value
+					if cids, ok := index[key]; ok {
+						return cids, nil // Found candidate rows from index!
+					} else {
+						return []string{}, nil // Value not in index, so no results
+					}
+				}
+			}
+		}
+	}
+
+	// If we reach here, we couldn't use an index, so return all rows for a full scan.
+	return table.Rows, nil
 }
 
 func evaluateExpression(row map[string]interface{}, expr ast.Expression) (bool, error) {
@@ -584,6 +634,12 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 		return "DELETE successful", nil
 
+	case *ast.CreateIndexStmt:
+		err = CreateIndex(ipfsAPI, dbName, s.Table, s.Column)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Index on column '%s' for table '%s' created successfully.", s.Column, s.Table), nil
 	default:
 		return "", fmt.Errorf("unsupported query type: %T", s)
 	}
@@ -603,6 +659,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	table := &Table{
 		SchemaCID: schemaCID,
 		Rows:      []string{},
+		Indexes:   make(map[string]string),
 	}
 
 	// 3. Add the table to IPFS
@@ -726,21 +783,38 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 			return err
 		}
 
-		if include {
-			// 7. Update the row with the casted value
-			row[setColumn] = castedValue
-
-			// 8. Add the updated row to IPFS
-			newRowCID, err := AddObject(sh, row)
-			if err != nil {
-				return err
-			}
-
-			// 9. Update the table with the new row CID
-			table.Rows[i] = newRowCID
-			updated = true
-		}
-	}
+					if include {
+						// Capture old state for index update
+						oldRow := make(map[string]interface{})
+						for k, v := range row {
+							oldRow[k] = v
+						}
+		
+						// First, update indexes as if the old row is being deleted
+						table, err = UpdateIndexesOnDelete(sh, table, rowCID, oldRow)
+						if err != nil {
+							return fmt.Errorf("failed to update indexes on delete part of update: %w", err)
+						}
+		
+						// Update the row data with the new value
+						row[setColumn] = castedValue
+		
+						// Add the updated row to IPFS to get a new CID
+						newRowCID, err := AddObject(sh, row)
+						if err != nil {
+							return err
+						}
+		
+						// Now, update indexes as if the new row is being inserted
+						table, err = UpdateIndexesOnInsert(sh, table, newRowCID, row)
+						if err != nil {
+							return fmt.Errorf("failed to update indexes on insert part of update: %w", err)
+						}
+		
+						// Update the table with the new row CID
+						table.Rows[i] = newRowCID
+						updated = true
+					}	}
 
 	if !updated {
 		return fmt.Errorf("no rows found to update")
@@ -807,6 +881,11 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
 
 		if include {
 			deleted = true
+			// Update indexes before deleting the row
+			table, err = UpdateIndexesOnDelete(sh, table, rowCID, row)
+			if err != nil {
+				return fmt.Errorf("failed to update indexes on delete: %w", err)
+			}
 		} else {
 			newRows = append(newRows, rowCID)
 		}
