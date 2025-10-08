@@ -27,14 +27,14 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		// --- 1. Parse the query string ---
 		stmt, err := ssql.Parse(queryString)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		selectStmt, ok := stmt.(*ast.SelectStmt)
 		if !ok {
-			fmt.Printf("Error: invalid SELECT statement\n")
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error: invalid SELECT statement")
+			return
 		}
 		tableName := selectStmt.Table
 		whereClause := selectStmt.Where
@@ -48,31 +48,31 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		// --- 2. Execute the query using ipfsdb.Query ---
 		rows, err := ipfsdb.Query(ipfsApi, dbName, tableName, whereColumn, whereValue)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		// --- 3. Get the schema for printing headers ---
 		sh := shell.NewShell(ipfsApi)
 		db, err := ipfsdb.LoadDatabase(sh, dbName)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 		tableCID, ok := db.Tables[tableName]
 		if !ok {
-			fmt.Printf("Error: could not find table %s\n", tableName)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error: could not find table", tableName)
+			return
 		}
 		table, err := ipfsdb.LoadTable(sh, tableCID)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 		schema, err := ipfsdb.LoadSchema(sh, table.SchemaCID)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		// --- 4. Print results ---

@@ -24,14 +24,14 @@ var updateCmd = &cobra.Command{
 
 		stmt, err := ssql.Parse(queryString)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		updateStmt, ok := stmt.(*ast.UpdateStmt)
 		if !ok {
-			fmt.Printf("Error: invalid UPDATE statement\n")
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error: invalid UPDATE statement")
+			return
 		}
 		tableName := updateStmt.Table
 		updateClause := updateStmt.Set
@@ -39,7 +39,7 @@ var updateCmd = &cobra.Command{
 
 		err = ipfsdb.Update(ipfsApi, dbName, tableName, updateClause.Column, updateClause.Value, whereClause.Column, whereClause.Value)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 

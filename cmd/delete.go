@@ -24,21 +24,21 @@ var deleteCmd = &cobra.Command{
 
 		stmt, err := ssql.Parse(queryString)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		deleteStmt, ok := stmt.(*ast.DeleteStmt)
 		if !ok {
-			fmt.Printf("Error: invalid DELETE statement\n")
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error: invalid DELETE statement")
+			return
 		}
 		tableName := deleteStmt.Table
 		whereClause := deleteStmt.Where
 
 		err = ipfsdb.Delete(ipfsApi, dbName, tableName, whereClause.Column, whereClause.Value)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 

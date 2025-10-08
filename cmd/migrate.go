@@ -29,27 +29,27 @@ var migrateCmd = &cobra.Command{
 		// Parse the ssql file
 		content, err := os.ReadFile(ssqlFile)
 		if err != nil {
-			fmt.Printf("Error reading file %s: %v\n", ssqlFile, err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error reading file:", err)
+			return
 		}
 
 		stmts, err := ssql.ParseMultiple(string(content))
 		if err != nil {
-			fmt.Printf("Error parsing ssql file: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error parsing ssql file:", err)
+			return
 		}
 
 		for _, stmt := range stmts {
 			createStmt, ok := stmt.(*ast.CreateTableStmt)
 			if !ok {
-				fmt.Printf("Error: file can only contain CREATE TABLE statements\n")
+				fmt.Fprintln(os.Stderr, "Error: file can only contain CREATE TABLE statements")
 				continue
 			}
 			tableName := createStmt.Name
 			schema := &createStmt.Schema
 			dbCid, err := ipfsdb.Migrate(ipfsApi, dbName, tableName, schema)
 			if err != nil {
-				fmt.Printf("Error migrating table '%s': %v\n", tableName, err)
+				fmt.Fprintln(os.Stderr, "Error migrating table:", err)
 				continue
 			}
 			fmt.Printf("Table '%s' created successfully in database '%s'.\n", tableName, dbName)

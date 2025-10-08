@@ -21,7 +21,7 @@ This stage focuses on core architecture and correctness, addressing fundamental 
   - **Solution:** Move the database name-to-IPNS-key mapping from `registry.json` into the existing LevelDB cache. LevelDB handles concurrent access atomically.
   - **Impact:** This permanently fixes the concurrency bug, improves performance, and removes the need for a separate, problematic JSON file.
 
-- [ ] **3. Centralize and Unify Error Handling:**
+- [✅] **3. Centralize and Unify Error Handling:**
   - **Problem:** The codebase uses `os.Exit(1)` in library code, making it untestable and non-reusable. Error responses in the API are inconsistent.
   - **Solution:** Refactor all `pkg` functions to return errors. Handle errors gracefully at the top level (`main.go` or the HTTP handler) to provide consistent, meaningful output and status codes.
 

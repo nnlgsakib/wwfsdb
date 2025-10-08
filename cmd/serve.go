@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	"github.com/nnlgsakib/wwfsdb/pkg/logging"
 	"github.com/spf13/cobra"
 )
 
@@ -42,13 +43,13 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	var req QueryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.NewEncoder(w).Encode(QueryResponse{Error: err.Error()})
+		logging.SendError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	result, err := ipfsdb.ExecuteQuery(ipfsApi, req.DbName, req.Query)
 	if err != nil {
-		json.NewEncoder(w).Encode(QueryResponse{Error: err.Error()})
+		logging.SendError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 

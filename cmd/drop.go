@@ -24,20 +24,20 @@ var dropCmd = &cobra.Command{
 
 		stmt, err := ssql.Parse(queryString)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			return
 		}
 
 		dropStmt, ok := stmt.(*ast.DropTableStmt)
 		if !ok {
-			fmt.Printf("Error: invalid DROP TABLE statement\n")
-			os.Exit(1)
+			fmt.Fprintln(os.Stderr, "Error: invalid DROP TABLE statement")
+			return
 		}
 		tableName := dropStmt.Name
 
 		err = ipfsdb.Drop(ipfsApi, dbName, tableName)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
