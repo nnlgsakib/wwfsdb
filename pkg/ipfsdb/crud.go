@@ -10,6 +10,7 @@ import (
 
     shell "github.com/ipfs/go-ipfs-api"
     ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 )
 
 // Insert adds a new row to a table
@@ -313,53 +314,56 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 
 // ExecuteQuery parses and executes a query
 func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
-	query = strings.TrimSpace(query)
-	queryParts := strings.Split(query, " ")
-	queryType := strings.ToUpper(queryParts[0])
+	// Use the new parser
+	stmt, err := ssql.Parse(query)
+	if err != nil {
+		// Also try parsing as a multi-statement script for CREATE TABLE files
+		if stmts, err2 := ssql.ParseMultiple(query); err2 == nil && len(stmts) > 0 {
+			// For now, we only support multi-statement scripts for CREATE TABLE
+			var results []string
+			for _, s := range stmts {
+				if ct, ok := s.(*ast.CreateTableStmt); ok {
+					_, err := Migrate(ipfsAPI, dbName, ct.Name, &ct.Schema)
+					if err != nil {
+						return "", err
+					}
+					results = append(results, fmt.Sprintf("Table '%s' created successfully in database '%s'.", ct.Name, dbName))
+				} else {
+					return "", fmt.Errorf("unsupported statement in multi-statement query: %T", s)
+				}
+			}
+			return strings.Join(results, "\n"), nil
+		}
+		return "", err // Return original error if multi-parse also fails
+	}
 
-	switch queryType {
-	case "CREATE":
-		if len(queryParts) < 2 {
-			return "", fmt.Errorf("invalid CREATE statement")
-		}
-		createType := strings.ToUpper(queryParts[1])
-		switch createType {
-		case "DATABASE":
-        dbName, err := ssql.ParseCreateDatabase(query)
-			if err != nil {
-				return "", err
-			}
-			_, err = CreateDatabase(ipfsAPI, dbName)
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("Database '%s' created successfully.", dbName), nil
-		case "TABLE":
-        schema, tableName, err := ssql.ParseCreateTable(query)
-			if err != nil {
-				return "", err
-			}
-			_, err = Migrate(ipfsAPI, dbName, tableName, schema)
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("Table '%s' created successfully in database '%s'.", tableName, dbName), nil
-		default:
-			return "", fmt.Errorf("unsupported CREATE statement: %s", query)
-		}
-    case "SELECT":
-        tableName, where, err := ssql.ParseSelect(query)
+	switch s := stmt.(type) {
+	case *ast.CreateDatabaseStmt:
+		_, err := CreateDatabase(ipfsAPI, s.Name)
 		if err != nil {
 			return "", err
 		}
-
+		return fmt.Sprintf("Database '%s' created successfully.", s.Name), nil
+	case *ast.CreateTableStmt:
+		_, err := Migrate(ipfsAPI, dbName, s.Name, &s.Schema)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Table '%s' created successfully in database '%s'.", s.Name, dbName), nil
+	case *ast.DropTableStmt:
+		err := Drop(ipfsAPI, dbName, s.Name)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
+	case *ast.SelectStmt:
 		var whereColumn, whereValue string
-		if where != nil {
-			whereColumn = where.Column
-			whereValue = where.Value
+		if s.Where != nil {
+			whereColumn = s.Where.Column
+			whereValue = s.Where.Value
 		}
 
-		rows, err := Query(ipfsAPI, dbName, tableName, whereColumn, whereValue)
+		rows, err := Query(ipfsAPI, dbName, s.Table, whereColumn, whereValue)
 		if err != nil {
 			return "", err
 		}
@@ -371,39 +375,24 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 		return string(jsonResult), nil
 
-    case "INSERT":
-        tableName, values, err := ssql.ParseInsert(query)
-		if err != nil {
-			return "", err
-		}
-
-		err = Insert(ipfsAPI, dbName, tableName, values)
+	case *ast.InsertStmt:
+		err = Insert(ipfsAPI, dbName, s.Table, s.Values)
 		if err != nil {
 			return "", err
 		}
 
 		return "INSERT successful", nil
 
-    case "UPDATE":
-        tableName, update, where, err := ssql.ParseUpdate(query)
-		if err != nil {
-			return "", err
-		}
-
-		err = Update(ipfsAPI, dbName, tableName, update.Column, update.Value, where.Column, where.Value)
+	case *ast.UpdateStmt:
+		err = Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where.Column, s.Where.Value)
 		if err != nil {
 			return "", err
 		}
 
 		return "UPDATE successful", nil
 
-    case "DELETE":
-        tableName, where, err := ssql.ParseDelete(query)
-		if err != nil {
-			return "", err
-		}
-
-		err = Delete(ipfsAPI, dbName, tableName, where.Column, where.Value)
+	case *ast.DeleteStmt:
+		err = Delete(ipfsAPI, dbName, s.Table, s.Where.Column, s.Where.Value)
 		if err != nil {
 			return "", err
 		}
@@ -411,7 +400,7 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		return "DELETE successful", nil
 
 	default:
-		return "", fmt.Errorf("unsupported query type: %s", queryType)
+		return "", fmt.Errorf("unsupported query type: %T", s)
 	}
 }
 

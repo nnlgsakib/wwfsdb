@@ -1,22 +1,22 @@
 package cmd
 
 import (
-    "fmt"
-    "os"
-    "strings"
+	"fmt"
+	"os"
+	"strings"
 
-    shell "github.com/ipfs/go-ipfs-api"
-    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-    "github.com/spf13/cobra"
-)
-
+	    shell "github.com/ipfs/go-ipfs-api"
+	    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+	    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	    "github.com/spf13/cobra"
+	)
 // queryCmd represents the query command
 var queryCmd = &cobra.Command{
 	Use:   "query [db_name] [query_string]",
 	Short: "Execute a SELECT query against a database",
 	Long: `Executes a SELECT query against a database stored in IPFS.
-It resolves the database's permanent Program ID (IPNS Name) to get the latest state.`, 
+It resolves the database's permanent Program ID (IPNS Name) to get the latest state.`,
 	Args: cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		dbName := args[0]
@@ -24,12 +24,20 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 
 		fmt.Printf("Querying database '%s' with: \"%s\"\n", dbName, queryString)
 
-        // --- 1. Parse the query string ---
-        tableName, whereClause, err := ssql.ParseSelect(queryString)
-        if err != nil {
-            fmt.Printf("Error: %v\n", err)
-            os.Exit(1)
-        }
+		// --- 1. Parse the query string ---
+		stmt, err := ssql.Parse(queryString)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		selectStmt, ok := stmt.(*ast.SelectStmt)
+		if !ok {
+			fmt.Printf("Error: invalid SELECT statement\n")
+			os.Exit(1)
+		}
+		tableName := selectStmt.Table
+		whereClause := selectStmt.Where
 
 		var whereColumn, whereValue string
 		if whereClause != nil {

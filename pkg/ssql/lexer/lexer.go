@@ -1,36 +1,167 @@
 package lexer
 
-// Package lexer defines tokenizer interfaces for SQL.
-// For complex SQL, we will wire this to a robust SQL tokenizer (e.g., Vitess).
+import "strings"
 
 // Token represents a lexical token.
 type Token struct {
-    Type TokenType
-    Lit  string
+	Type    TokenType
+	Literal string
 }
 
-type TokenType int
+type TokenType string
 
 const (
-    // Minimal placeholder tokens. Real implementation will be replaced.
-    ILLEGAL TokenType = iota
-    EOF
-    IDENT
-    STRING
+	ILLEGAL = "ILLEGAL"
+	EOF     = "EOF"
+
+	// Identifiers & literals
+	IDENT  = "IDENT"  // add, foobar, x, y, ...
+	STRING = "STRING" // "foobar" or 'foobar'
+
+	// Operators
+	ASSIGN = "="
+
+	// Delimiters
+	COMMA     = ","
+	SEMICOLON = ";"
+	LPAREN    = "("
+	RPAREN    = ")"
+	ASTERISK  = "*"
+
+	// Keywords
+	CREATE   = "CREATE"
+	DATABASE = "DATABASE"
+	TABLE    = "TABLE"
+	DROP     = "DROP"
+	SELECT   = "SELECT"
+	FROM     = "FROM"
+	WHERE    = "WHERE"
+	INSERT   = "INSERT"
+	INTO     = "INTO"
+	VALUES   = "VALUES"
+	UPDATE   = "UPDATE"
+	SET      = "SET"
+	DELETE   = "DELETE"
 )
 
+var keywords = map[string]TokenType{
+	"CREATE":   CREATE,
+	"DATABASE": DATABASE,
+	"TABLE":    TABLE,
+	"DROP":     DROP,
+	"SELECT":   SELECT,
+	"FROM":     FROM,
+	"WHERE":    WHERE,
+	"INSERT":   INSERT,
+	"INTO":     INTO,
+	"VALUES":   VALUES,
+	"UPDATE":   UPDATE,
+	"SET":      SET,
+	"DELETE":   DELETE,
+}
+
+func LookupIdent(ident string) TokenType {
+	if tok, ok := keywords[strings.ToUpper(ident)]; ok {
+		return tok
+	}
+	return IDENT
+}
+
 // Lexer is the interface for SQL tokenizers.
-type Lexer interface {
-    Next() Token
+type Lexer struct {
+	input        string
+	position     int  // current position in input (points to current char)
+	readPosition int  // current reading position in input (after current char)
+	ch           byte // current char under examination
 }
 
-// Simple is a trivial placeholder lexer. Not suitable for complex SQL.
-type Simple struct{ s string; i int }
-
-func NewSimple(input string) *Simple { return &Simple{s: input} }
-
-func (l *Simple) Next() Token {
-    // Placeholder: immediately return EOF to avoid unused warnings.
-    return Token{Type: EOF}
+func New(input string) *Lexer {
+	l := &Lexer{input: input}
+	l.readChar()
+	return l
 }
 
+func (l *Lexer) readChar() {
+	if l.readPosition >= len(l.input) {
+		l.ch = 0
+	} else {
+		l.ch = l.input[l.readPosition]
+	}
+	l.position = l.readPosition
+	l.readPosition++
+}
+
+func (l *Lexer) NextToken() Token {
+	var tok Token
+
+	l.skipWhitespace()
+
+	switch l.ch {
+	case '=':
+		tok = newToken(ASSIGN, l.ch)
+	case ';':
+		tok = newToken(SEMICOLON, l.ch)
+	case '(': 
+		tok = newToken(LPAREN, l.ch)
+	case ')':
+		tok = newToken(RPAREN, l.ch)
+	case ',':
+		tok = newToken(COMMA, l.ch)
+	case '*':
+		tok = newToken(ASTERISK, l.ch)
+	case '\'':
+		tok.Type = STRING
+		tok.Literal = l.readString()
+	case 0:
+		tok.Literal = ""
+		tok.Type = EOF
+	default:
+		if isLetter(l.ch) || isDigit(l.ch) {
+			tok.Literal = l.readIdentifier()
+			tok.Type = LookupIdent(tok.Literal)
+			return tok
+		} else {
+			tok = newToken(ILLEGAL, l.ch)
+		}
+	}
+
+	l.readChar()
+	return tok
+}
+
+func (l *Lexer) skipWhitespace() {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+		l.readChar()
+	}
+}
+
+func (l *Lexer) readIdentifier() string {
+	position := l.position
+	for isLetter(l.ch) || isDigit(l.ch) {
+		l.readChar()
+	}
+	return l.input[position:l.position]
+}
+
+func (l *Lexer) readString() string {
+	position := l.position + 1
+	for {
+		l.readChar()
+		if l.ch == '\'' || l.ch == 0 {
+			break
+		}
+	}
+	return l.input[position:l.position]
+}
+
+func isLetter(ch byte) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+func isDigit(ch byte) bool {
+	return '0' <= ch && ch <= '9'
+}
+
+func newToken(tokenType TokenType, ch byte) Token {
+	return Token{Type: tokenType, Literal: string(ch)}
+}

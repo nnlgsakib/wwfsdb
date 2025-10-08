@@ -1,15 +1,14 @@
 package cmd
 
 import (
-    "fmt"
-    "os"
-    "strings"
+	"fmt"
+	"os"
 
-    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-    "github.com/spf13/cobra"
-)
-
+	    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+	    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	    "github.com/spf13/cobra"
+	)
 // executeCmd represents the execute command
 var executeCmd = &cobra.Command{
 	Use:   "execute [db_name] [sql_query]",
@@ -22,18 +21,19 @@ var executeCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		// --- 1. Detect query type and delegate ---
-		queryType := strings.TrimSpace(strings.ToUpper(strings.Split(queryString, " ")[0]))
-		if queryType != "INSERT" {
-			fmt.Printf("Error: Unsupported query type '%s'. Only INSERT is supported.\n", queryType)
+		stmt, err := ssql.Parse(queryString)
+		if err != nil {
+			fmt.Printf("Error parsing query: %v\n", err)
 			os.Exit(1)
 		}
 
-        tableName, values, err := ssql.ParseInsert(queryString)
-        if err != nil {
-            fmt.Printf("Error parsing query: %v\n", err)
-            os.Exit(1)
-        }
+		insertStmt, ok := stmt.(*ast.InsertStmt)
+		if !ok {
+			fmt.Printf("Error: not an INSERT statement\n")
+			os.Exit(1)
+		}
+		tableName := insertStmt.Table
+		values := insertStmt.Values
 
 		err = ipfsdb.Insert(ipfsApi, dbName, tableName, values)
 		if err != nil {

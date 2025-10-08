@@ -6,6 +6,7 @@ import (
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
     ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
     "github.com/spf13/cobra"
 )
 
@@ -21,11 +22,18 @@ var dropCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-        tableName, err := ssql.ParseDrop(queryString)
+		stmt, err := ssql.Parse(queryString)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
 		}
+
+		dropStmt, ok := stmt.(*ast.DropTableStmt)
+		if !ok {
+			fmt.Printf("Error: invalid DROP TABLE statement\n")
+			os.Exit(1)
+		}
+		tableName := dropStmt.Name
 
 		err = ipfsdb.Drop(ipfsApi, dbName, tableName)
 		if err != nil {

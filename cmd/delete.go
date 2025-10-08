@@ -6,6 +6,7 @@ import (
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
     ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
     "github.com/spf13/cobra"
 )
 
@@ -21,11 +22,19 @@ var deleteCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-        tableName, whereClause, err := ssql.ParseDelete(queryString)
-        if err != nil {
-            fmt.Printf("Error: %v\n", err)
-            os.Exit(1)
-        }
+		stmt, err := ssql.Parse(queryString)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		deleteStmt, ok := stmt.(*ast.DeleteStmt)
+		if !ok {
+			fmt.Printf("Error: invalid DELETE statement\n")
+			os.Exit(1)
+		}
+		tableName := deleteStmt.Table
+		whereClause := deleteStmt.Where
 
 		err = ipfsdb.Delete(ipfsApi, dbName, tableName, whereClause.Column, whereClause.Value)
 		if err != nil {

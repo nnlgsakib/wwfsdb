@@ -9,6 +9,7 @@ import (
 
     "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
     ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
+    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
     "github.com/spf13/cobra"
 )
 
@@ -32,13 +33,20 @@ var migrateCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-        tables, err := ssql.ParseMultipleCreateTables(string(content))
-        if err != nil {
-            fmt.Printf("Error parsing ssql file: %v\n", err)
-            os.Exit(1)
-        }
+		stmts, err := ssql.ParseMultiple(string(content))
+		if err != nil {
+			fmt.Printf("Error parsing ssql file: %v\n", err)
+			os.Exit(1)
+		}
 
-		for tableName, schema := range tables {
+		for _, stmt := range stmts {
+			createStmt, ok := stmt.(*ast.CreateTableStmt)
+			if !ok {
+				fmt.Printf("Error: file can only contain CREATE TABLE statements\n")
+				continue
+			}
+			tableName := createStmt.Name
+			schema := &createStmt.Schema
 			dbCid, err := ipfsdb.Migrate(ipfsApi, dbName, tableName, schema)
 			if err != nil {
 				fmt.Printf("Error migrating table '%s': %v\n", tableName, err)
