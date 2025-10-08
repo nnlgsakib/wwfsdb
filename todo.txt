@@ -66,7 +66,7 @@ This stage is focused on internal improvements that make the project faster, mor
   - **Problem:** The project lacks automated tests, making refactoring risky.
   - **Solution:** Build a full suite of unit tests for all packages and integration tests for the CLI commands, using a mock IPFS server where appropriate. Set up a CI pipeline to run tests automatically.
 
-- [ ] **3. Refactor Core `pkg/ipfsdb` Logic:**
+- [✅] **3. Refactor Core `pkg/ipfsdb` Logic:**
   - **Problem:** `crud.go` is a large, monolithic file.
   - **Solution:** Break the file down into smaller, more focused files based on responsibility (e.g., `database.go`, `table.go`, `query.go`, `publish.go`).
 
