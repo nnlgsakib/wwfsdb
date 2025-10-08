@@ -76,8 +76,9 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 	// 10. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 11. Update the IPNS record
-	return Publish(sh, dbName, newDbCID)
+	// 11. Update the IPNS record in the background
+	publishAsync(sh, dbName, newDbCID)
+	return nil
 }
 
 // Query retrieves rows from a table
@@ -139,15 +140,15 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*Database, error) {
 	if ok {
 		dbCID = cachedCID
 	} else {
-		// 2. If not in cache, read the registry to get the program ID
-		registry, err := LoadRegistry()
+		// 2. If not in cache, read the registry from LevelDB to get the program ID
+		entryData, err := GetFromCache([]byte("registry:" + dbName))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("database %s not found in registry", dbName)
 		}
 
-		entry, ok := registry[dbName]
-		if !ok {
-			return nil, fmt.Errorf("database %s not found in registry", dbName)
+		var entry RegistryEntry
+		if err := json.Unmarshal(entryData, &entry); err != nil {
+			return nil, err
 		}
 
 		// 3. Resolve the IPNS name to get the database CID
@@ -234,16 +235,25 @@ func AddObject(sh *shell.Shell, obj interface{}) (string, error) {
 	return sh.Add(bytes.NewReader(data))
 }
 
+// publishAsync updates the IPNS record for a database in the background
+func publishAsync(sh *shell.Shell, dbName, cid string) {
+	go func() {
+		if err := Publish(sh, dbName, cid); err != nil {
+			fmt.Fprintf(os.Stderr, "Error publishing to IPNS: %v\n", err)
+		}
+	}()
+}
+
 // Publish updates the IPNS record for a database
 func Publish(sh *shell.Shell, dbName, cid string) error {
-	registry, err := LoadRegistry()
+	entryData, err := GetFromCache([]byte("registry:" + dbName))
 	if err != nil {
-		return err
+		return fmt.Errorf("database %s not found in registry", dbName)
 	}
 
-	entry, ok := registry[dbName]
-	if !ok {
-		return fmt.Errorf("database %s not found in registry", dbName)
+	var entry RegistryEntry
+	if err := json.Unmarshal(entryData, &entry); err != nil {
+		return err
 	}
 
 	_, err = sh.PublishWithDetails(cid, entry.KeyName, 0, 0, false)
@@ -271,37 +281,32 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 		return "", err
 	}
 
-	// 4. Publish the database CID to the new key
-	_, err = sh.PublishWithDetails(dbCID, key.Name, 0, 0, false)
-	if err != nil {
-		return "", err
-	}
+	// 4. Publish the database CID to the new key in the background
+	go func() {
+		_, err := sh.PublishWithDetails(dbCID, key.Name, 0, 0, false)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error publishing to IPNS for new database: %v\n", err)
+		}
+	}()
 
 	// 5. Save the database info to the registry
-	registry, err := LoadRegistry()
-	if err != nil {
-		// If the registry doesn't exist, create a new one
-		if os.IsNotExist(err) {
-			registry = make(map[string]RegistryEntry)
-		} else {
-			return "", err
-		}
-	}
-
-	registry[dbName] = RegistryEntry{
+	entry := RegistryEntry{
+		DbName:    dbName,
 		ProgramID: key.Id,
 		KeyName:   key.Name,
 	}
-
-	data, err := json.MarshalIndent(registry, "", "  ")
+	entryData, err := json.Marshal(entry)
 	if err != nil {
 		return "", err
 	}
 
-	err = os.WriteFile("registry.json", data, 0644)
+	err = PutToCache([]byte("registry:"+dbName), entryData)
 	if err != nil {
 		return "", err
 	}
+
+	// Update the cache with the new database CID
+	UpdateCache(dbName, dbCID)
 
 	return key.Id, nil
 }
@@ -450,11 +455,8 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	// 7. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 8. Update the IPNS record
-	err = Publish(sh, dbName, newDbCID)
-	if err != nil {
-		return "", err
-	}
+	// 8. Update the IPNS record in the background
+	publishAsync(sh, dbName, newDbCID)
 
 	return newDbCID, nil
 }
@@ -486,8 +488,9 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 	// 5. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 6. Update the IPNS record
-	return Publish(sh, dbName, newDbCID)
+	// 6. Update the IPNS record in the background
+	publishAsync(sh, dbName, newDbCID)
+	return nil
 }
 
 // Update modifies a row in a table
@@ -559,8 +562,9 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue, whereColumn, whereV
 	// 11. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 12. Update the IPNS record
-	return Publish(sh, dbName, newDbCID)
+	// 12. Update the IPNS record in the background
+	publishAsync(sh, dbName, newDbCID)
+	return nil
 }
 
 // Delete removes a row from a table
@@ -626,34 +630,8 @@ func Delete(ipfsAPI, dbName, tableName, whereColumn, whereValue string) error {
 	// 9. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 10. Update the IPNS record
-	return Publish(sh, dbName, newDbCID)
+	// 10. Update the IPNS record in the background
+	publishAsync(sh, dbName, newDbCID)
+	return nil
 }
 
-// LoadRegistry loads the registry from registry.json
-func LoadRegistry() (map[string]RegistryEntry, error) {
-	data, err := os.ReadFile("registry.json")
-	if err != nil {
-		if os.IsNotExist(err) {
-			// If the registry doesn't exist, create a new one
-			registry := make(map[string]RegistryEntry)
-			data, err := json.MarshalIndent(registry, "", "  ")
-			if err != nil {
-				return nil, err
-			}
-			err = os.WriteFile("registry.json", data, 0644)
-			if err != nil {
-				return nil, err
-			}
-			return registry, nil
-		}
-		return nil, err
-	}
-
-	var registry map[string]RegistryEntry
-	if err := json.Unmarshal(data, &registry); err != nil {
-		return nil, err
-	}
-
-	return registry, nil
-}

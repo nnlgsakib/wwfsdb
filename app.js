@@ -1,7 +1,7 @@
 const http = require('http');
 const readline = require('readline');
 
-const dbName = 'supply_chain_db';
+const dbName = '1';
 
 // --- Core API Communication ---
 async function sendQuery(dbName, query) {

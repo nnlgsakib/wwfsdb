@@ -13,6 +13,7 @@ type Database struct {
 
 // RegistryEntry defines the structure for an entry in registry.json
 type RegistryEntry struct {
+	DbName    string `json:"db_name"`
 	ProgramID string `json:"program_id"` // The IPNS Name (Key ID)
 	KeyName   string `json:"key_name"`   // The local key name
 }
