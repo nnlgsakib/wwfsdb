@@ -16,7 +16,7 @@ This stage focuses on core architecture and correctness, addressing fundamental 
     - Remove the old regex-based `pkg/parser` and `pkg/ssql` packages.
   - **Impact:** This is the most critical upgrade. It unifies logic and is a prerequisite for almost all new SQL features.
 
-- [ ] **2. Solve Registry Concurrency by Migrating to LevelDB:**
+- [✅] **2. Solve Registry Concurrency by Migrating to LevelDB:**
   - **Problem:** The `registry.json` file is prone to race conditions during concurrent operations and is inefficient to update.
   - **Solution:** Move the database name-to-IPNS-key mapping from `registry.json` into the existing LevelDB cache. LevelDB handles concurrent access atomically.
   - **Impact:** This permanently fixes the concurrency bug, improves performance, and removes the need for a separate, problematic JSON file.
