@@ -49,8 +49,8 @@ With a stable foundation, this stage focuses on adding powerful new capabilities
   - **Solution:** Design and implement an indexing strategy. This would likely involve creating separate index objects in IPFS that map column values to row CIDs, enabling fast lookups.
 
 - [ ] **4. Develop Remote Access APIs:**
-  - **a. Enhance REST API:** Evolve the basic `/query` endpoint into a more complete RESTful API with endpoints for all major database operations and improved error reporting.
-  - **b. Implement json rpc  API:** Define a clear API using Protocol Buffers and implement a mux json rpc  server for high-performance, language-agnostic database access.
+  - The current system depends on a REST API, which is not efficient. Instead, use JSON-RPC to create proper rpc  methods for different operations eac metod sould like wwfs_{opname or someting}.
+  -  Implement json rpc  API:** Define a clear API using Protocol Buffers and implement a mux json rpc  server for high-performance, language-agnostic database access.
 
 ---
 
