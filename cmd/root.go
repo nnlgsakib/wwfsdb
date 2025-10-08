@@ -35,13 +35,24 @@ var ipfsApi string
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "wwfsdb",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "A decentralized database built on IPFS",
+	Long: `wwfsdb is a decentralized database system that leverages IPFS for data storage and IPNS for versioning.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+It provides a simple SQL-like interface for creating, querying, and managing databases.
+
+Examples:
+
+  # Create a new database
+  wwfsdb createdatabase "CREATE DATABASE my_db"
+
+  # Create a new table in a database
+  wwfsdb migrate my_db ./schema.ssql
+
+  # Query a database
+  wwfsdb query my_db "SELECT * FROM users WHERE name = 'John Doe'"
+
+  # Start the HTTP server
+  wwfsdb serve -p 8080`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return ipfsdb.InitCache()
 	},
