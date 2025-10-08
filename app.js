@@ -5,20 +5,26 @@ const dbName = 'testdb' + Date.now();
 const testState = {
     passed: 0,
     failed: 0,
+    requestId: 1,
 };
 
-// --- Core API Communication ---
+// --- Core API Communication (JSON-RPC) ---
 async function sendQuery(dbName, query) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
-      db_name: dbName,
-      query: query,
+        jsonrpc: '2.0',
+        method: 'wwfs.ExecuteQuery',
+        params: [{
+            db_name: dbName,
+            query: query,
+        }],
+        id: testState.requestId++,
     });
 
     const options = {
       hostname: 'localhost',
       port: 8080,
-      path: '/query',
+      path: '/rpc',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -32,7 +38,7 @@ async function sendQuery(dbName, query) {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          // Don't log error here, let the assert functions handle it
+          // console.log('RAW RESPONSE:', JSON.stringify(response, null, 2)); // Uncomment for debugging
           resolve(response);
         } catch (e) {
             console.error(`
@@ -53,24 +59,29 @@ async function sendQuery(dbName, query) {
 }
 
 function safeParseResult(res) {
-    if (!res || !res.result || res.result === 'null') {
+    if (!res || !res.result || !res.result.result) {
         return [];
     }
     try {
-        // IMPORTANT: We do not sort or modify the result here anymore.
-        // The order and types are now significant for testing.
-        return JSON.parse(res.result);
+        return JSON.parse(res.result.result);
     } catch (e) {
-        console.error("Failed to parse result:", res.result);
-        return [];
+        // This can happen for non-SELECT queries that return a simple string.
+        return res.result.result;
     }
 }
 
 async function assertQueryResult(query, expected, message) {
     const res = await sendQuery(dbName, query);
+    if (res.error) {
+        console.log(`  ❌ ${message}`);
+        testState.failed++;
+        console.log(`     Query failed unexpectedly: ${query}`);
+        console.log(`     Error: ${res.error.message || res.error}`);
+        return;
+    }
+
     const data = safeParseResult(res);
 
-    // A more robust comparison that ignores order in arrays of objects
     const Mismatch = {
         Value: 'value',
         Type: 'type',
@@ -128,7 +139,7 @@ async function assertCommandSuccess(query, message) {
     if (!success) {
         testState.failed++;
         console.log(`     Query failed: ${query}`);
-        console.log(`     Error: ${res.error}`);
+        console.log(`     Error: ${res.error.message || res.error}`);
     } else {
         testState.passed++;
     }
@@ -213,7 +224,6 @@ async function runRegressionTests() {
     await assertCommandSuccess(`INSERT INTO products VALUES ('prod1', 'Product One', 'High-quality gadget', '19.99', 'sup1');`, 'Inserts a new product');
 
     console.log('\n  --- SELECT Operations ---');
-    // Note: The expected result now uses native types for rating and unit_cost
     await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup1'`, 
         [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": 4, "supplier_id": "sup1" }], 
         'Selects supplier by ID, verifying native INT type');

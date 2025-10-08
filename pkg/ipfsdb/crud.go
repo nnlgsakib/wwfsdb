@@ -130,7 +130,7 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 	}
 
 	// 6. Iterate over the candidate rows and filter based on the WHERE clause
-	var results []map[string]interface{}
+	results := make([]map[string]interface{}, 0)
 	for _, rowCID := range rowCIDs {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
