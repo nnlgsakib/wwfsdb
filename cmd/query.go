@@ -6,8 +6,7 @@ import (
 	"os"
 	"strings"
 
-	shell "github.com/ipfs/go-ipfs-api"
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"github.com/spf13/cobra"
@@ -26,7 +25,7 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 
 		fmt.Printf("Querying database '%s' with: \"%s\"\n", dbName, queryString)
 
-		// --- 1. Parse the query string ---
+		// --- 1. Parse the query string to get table name and columns --- 
 		stmt, err := ssql.Parse(queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
@@ -39,47 +38,37 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 			return
 		}
 		tableName := selectStmt.Table
-		whereClause := selectStmt.Where
 
-		// --- 2. Execute the query using ipfsdb.Query ---
-		rows, err := ipfsdb.Query(ipfsApi, dbName, tableName, selectStmt.Columns, whereClause)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			return
-		}
-
-		// --- 3. Get the schema for printing headers ---
-		sh := shell.NewShell(ipfsApi)
-		db, err := ipfsdb.LoadDatabase(sh, dbName)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			return
-		}
-		tableCID, ok := db.Tables[tableName]
-		if !ok {
-			fmt.Fprintln(os.Stderr, "Error: could not find table", tableName)
-			return
-		}
-		table, err := ipfsdb.LoadTable(sh, tableCID)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			return
-		}
-		schema, err := ipfsdb.LoadSchema(sh, table.SchemaCid)
+		// --- 2. Execute the query using RPC client --- 
+		c := client.NewClient(rpcServerAddr)
+		resultString, err := c.ExecuteQuery(dbName, queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		// --- 4. Print results ---
+		var rows []map[string]interface{}
+		if err := json.Unmarshal([]byte(resultString), &rows); err != nil {
+			fmt.Fprintln(os.Stderr, "Error unmarshalling result:", err)
+			return
+		}
+
+		// --- 3. Get the schema for printing headers --- 
 		var headers []string
 		if len(selectStmt.Columns) == 1 && selectStmt.Columns[0] == "*" {
+			schema, err := c.GetTableSchema(dbName, tableName)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error getting schema:", err)
+				return
+			}
 			for _, col := range schema.Columns {
 				headers = append(headers, col.Name)
 			}
 		} else {
 			headers = selectStmt.Columns
 		}
+
+		// --- 4. Print results --- 
 		fmt.Println(strings.Join(headers, "\t| "))
 		fmt.Println(strings.Repeat("----", len(headers)*2))
 

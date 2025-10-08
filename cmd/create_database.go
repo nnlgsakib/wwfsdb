@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -19,27 +17,14 @@ var createDatabaseCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		queryString := args[0]
 
-		stmt, err := ssql.Parse(queryString)
+		c := client.NewClient(rpcServerAddr)
+		result, err := c.ExecuteQuery("", queryString) // dbName is not needed here
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		createDbStmt, ok := stmt.(*ast.CreateDatabaseStmt)
-		if !ok {
-			fmt.Fprintln(os.Stderr, "Error: invalid CREATE DATABASE statement")
-			return
-		}
-		dbName := createDbStmt.Name
-
-		programID, err := ipfsdb.CreateDatabase(ipfsApi, dbName)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			return
-		}
-
-		fmt.Printf("Database '%s' created successfully.\n", dbName)
-		fmt.Printf("Program ID: %s\n", programID)
+		fmt.Println(result)
 	},
 }
 

@@ -7,9 +7,7 @@ import (
     "fmt"
     "os"
 
-    "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-    ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-    "github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+    "github.com/nnlgsakib/wwfsdb/pkg/client"
     "github.com/spf13/cobra"
 )
 
@@ -26,35 +24,20 @@ var migrateCmd = &cobra.Command{
 
 		fmt.Printf("Migrating tables from file '%s' to database '%s'\n", ssqlFile, dbName)
 
-		// Parse the ssql file
 		content, err := os.ReadFile(ssqlFile)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error reading file:", err)
 			return
 		}
 
-		stmts, err := ssql.ParseMultiple(string(content))
+		c := client.NewClient(rpcServerAddr)
+		result, err := c.ExecuteQuery(dbName, string(content))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error parsing ssql file:", err)
+			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		for _, stmt := range stmts {
-			createStmt, ok := stmt.(*ast.CreateTableStmt)
-			if !ok {
-				fmt.Fprintln(os.Stderr, "Error: file can only contain CREATE TABLE statements")
-				continue
-			}
-			tableName := createStmt.Name
-			schema := &createStmt.Schema
-			dbCid, err := ipfsdb.Migrate(ipfsApi, dbName, tableName, schema)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error migrating table:", err)
-				continue
-			}
-			fmt.Printf("Table '%s' created successfully in database '%s'.\n", tableName, dbName)
-			fmt.Printf("Database CID: %s\n", dbCid)
-		}
+		fmt.Println(result)
 	},
 }
 

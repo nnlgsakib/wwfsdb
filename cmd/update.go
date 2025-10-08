@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -22,30 +20,15 @@ var updateCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		stmt, err := ssql.Parse(queryString)
+		c := client.NewClient(rpcServerAddr)
+		result, err := c.ExecuteQuery(dbName, queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		updateStmt, ok := stmt.(*ast.UpdateStmt)
-		if !ok {
-			fmt.Fprintln(os.Stderr, "Error: invalid UPDATE statement")
-			return
-		}
-		tableName := updateStmt.Table
-		updateClause := updateStmt.Set
-		whereClause := updateStmt.Where
-
-		err = ipfsdb.Update(ipfsApi, dbName, tableName, updateClause.Column, updateClause.Value, whereClause)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
-			return
-		}
-
-		fmt.Printf("\nSuccessfully updated data and updated database state!\n")
-		fmt.Printf("Database '%s' has been updated locally. Run 'query' to see the changes immediately.\n", dbName)
-		fmt.Println("Note: IPNS propagation can take some time for the changes to be reflected elsewhere.")
+		fmt.Println(result)
+		fmt.Printf("\nDatabase '%s' has been updated. Note: IPNS propagation can take some time.\n", dbName)
 	},
 }
 

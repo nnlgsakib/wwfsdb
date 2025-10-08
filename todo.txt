@@ -70,7 +70,7 @@ This stage is focused on internal improvements that make the project faster, mor
   - **Problem:** `crud.go` is a large, monolithic file.
   - **Solution:** Break the file down into smaller, more focused files based on responsibility (e.g., `database.go`, `table.go`, `query.go`, `publish.go`).
 
-- [ ] **4. Create an Interactive SQL Shell:**
+- [] **4. Create an Interactive SQL Shell:**
   - **Problem:** Executing queries via the CLI is repetitive.
   - **Solution:** Create a `wwfsdb shell [db_name]` command that opens a REPL, allowing users to execute multiple SQL queries in an interactive session.
 
