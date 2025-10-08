@@ -1,0 +1,89 @@
+# WWSFDB Project Roadmap
+
+This document outlines the development roadmap for WWSFDB, organized into sequential stages. Each stage builds upon the last, ensuring foundational issues are solved before new features are added.
+
+---
+
+## Stage 1: Foundational Improvements (Critical Priority)
+
+This stage focuses on core architecture and correctness, addressing fundamental issues that block future development and impact stability.
+
+- [ ] **1. Overhaul the SQL Parsing Engine:**
+  - **Problem:** The current regex-based parser is fragile, inefficient, and severely limits SQL support. It also leads to redundant parsing logic between the `cmd` and `pkg` layers.
+  - **Solution:**
+    - Build a robust, non-regex-based SQL parser internally. A standard approach is to first create a lexer to tokenize the input string, then build a recursive descent parser to construct an Abstract Syntax Tree (AST).
+    - Refactor the command logic to use this new parser *once* and pass the generated AST to the database backend.
+    - Remove the old regex-based `pkg/parser` and `pkg/ssql` packages.
+  - **Impact:** This is the most critical upgrade. It unifies logic and is a prerequisite for almost all new SQL features.
+
+- [ ] **2. Solve Registry Concurrency by Migrating to LevelDB:**
+  - **Problem:** The `registry.json` file is prone to race conditions during concurrent operations and is inefficient to update.
+  - **Solution:** Move the database name-to-IPNS-key mapping from `registry.json` into the existing LevelDB cache. LevelDB handles concurrent access atomically.
+  - **Impact:** This permanently fixes the concurrency bug, improves performance, and removes the need for a separate, problematic JSON file.
+
+- [ ] **3. Centralize and Unify Error Handling:**
+  - **Problem:** The codebase uses `os.Exit(1)` in library code, making it untestable and non-reusable. Error responses in the API are inconsistent.
+  - **Solution:** Refactor all `pkg` functions to return errors. Handle errors gracefully at the top level (`main.go` or the HTTP handler) to provide consistent, meaningful output and status codes.
+
+---
+
+## Stage 2: Feature Expansion
+
+With a stable foundation, this stage focuses on adding powerful new capabilities to the database.
+
+- [ ] **1. Expand SQL Language Support:**
+  - **Prerequisite:** Stage 1 SQL Parser Overhaul.
+  - **Features to Add:**
+    - `SELECT <columns>`: Allow querying for specific columns, not just `*`.
+    - **Complex `WHERE` Clauses:** Support `AND`, `OR`, `LIKE`, `IN`, and operators (`>`, `<`, etc.).
+    - `ORDER BY` for sorting results.
+    - `LIMIT` / `OFFSET` for result pagination.
+    - `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`).
+
+- [ ] **2. Implement Full Data Type Support:**
+  - **Problem:** All data is currently treated as a string, regardless of the schema's definition.
+  - **Solution:** Implement type validation, casting, and storage that respects schema types (`INTEGER`, `BOOLEAN`, etc.). This should be designed alongside the Protocol Buffers migration in Stage 3 for maximum efficiency.
+
+- [ ] **3. Introduce Database Indexing:**
+  - **Problem:** Queries require a full table scan, which is highly inefficient.
+  - **Solution:** Design and implement an indexing strategy. This would likely involve creating separate index objects in IPFS that map column values to row CIDs, enabling fast lookups.
+
+- [ ] **4. Develop Remote Access APIs:**
+  - **a. Enhance REST API:** Evolve the basic `/query` endpoint into a more complete RESTful API with endpoints for all major database operations and improved error reporting.
+  - **b. Implement gRPC API:** Define a clear API using Protocol Buffers and implement a gRPC server for high-performance, language-agnostic database access.
+
+---
+
+## Stage 3: Quality, Performance, & Developer Experience
+
+This stage is focused on internal improvements that make the project faster, more reliable, and easier to work on.
+
+- [ ] **1. Adopt Protocol Buffers for IPFS Data:**
+  - **Problem:** Storing data as JSON in IPFS is verbose and slow to parse.
+  - **Solution:** Define `.proto` schemas for all internal data structures (`Database`, `Table`, `Row`) and use Protocol Buffers for serialization. This will reduce storage size, improve performance, and help enforce the data types defined in Stage 2.
+
+- [ ] **2. Add a Comprehensive Testing Suite:**
+  - **Problem:** The project lacks automated tests, making refactoring risky.
+  - **Solution:** Build a full suite of unit tests for all packages and integration tests for the CLI commands, using a mock IPFS server where appropriate. Set up a CI pipeline to run tests automatically.
+
+- [ ] **3. Refactor Core `pkg/ipfsdb` Logic:**
+  - **Problem:** `crud.go` is a large, monolithic file.
+  - **Solution:** Break the file down into smaller, more focused files based on responsibility (e.g., `database.go`, `table.go`, `query.go`, `publish.go`).
+
+- [ ] **4. Create an Interactive SQL Shell:**
+  - **Problem:** Executing queries via the CLI is repetitive.
+  - **Solution:** Create a `wwfsdb shell [db_name]` command that opens a REPL, allowing users to execute multiple SQL queries in an interactive session.
+
+- [ ] **5. Implement a Robust Configuration System:**
+  - **Problem:** Configuration is handled by CLI flags and hardcoded paths.
+  - **Solution:** Use a library like `Viper` to support configuration from a file, environment variables, and CLI flags for more flexible deployment.
+
+---
+
+## Stage 4: Documentation & Community
+
+This final stage focuses on making the project accessible, understandable, and easy to contribute to.
+
+- [ ] **1. Write a Comprehensive `README.md`:** Cover project vision, architecture, installation, detailed usage examples, and the development roadmap.
+- [ ] **2. Improve CLI Command Help Text:** Write detailed `Long` descriptions for each command with clear syntax examples.
+- [ ] **3. Add In-Code Documentation:** Add comments to clarify complex functions, data structures, and design decisions, especially in the IPFS interaction logic.
