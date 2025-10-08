@@ -50,7 +50,7 @@ With a stable foundation, this stage focuses on adding powerful new capabilities
 
 - [ ] **4. Develop Remote Access APIs:**
   - **a. Enhance REST API:** Evolve the basic `/query` endpoint into a more complete RESTful API with endpoints for all major database operations and improved error reporting.
-  - **b. Implement gRPC API:** Define a clear API using Protocol Buffers and implement a gRPC server for high-performance, language-agnostic database access.
+  - **b. Implement json rpc  API:** Define a clear API using Protocol Buffers and implement a mux json rpc  server for high-performance, language-agnostic database access.
 
 ---
 
