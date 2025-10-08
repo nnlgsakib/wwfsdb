@@ -8,7 +8,7 @@ This document outlines the development roadmap for WWSFDB, organized into sequen
 
 This stage focuses on core architecture and correctness, addressing fundamental issues that block future development and impact stability.
 
-- [ ] **1. Overhaul the SQL Parsing Engine:**
+- [✅] ] **1. Overhaul the SQL Parsing Engine:**
   - **Problem:** The current regex-based parser is fragile, inefficient, and severely limits SQL support. It also leads to redundant parsing logic between the `cmd` and `pkg` layers.
   - **Solution:**
     - Build a robust, non-regex-based SQL parser internally. A standard approach is to first create a lexer to tokenize the input string, then build a recursive descent parser to construct an Abstract Syntax Tree (AST).
