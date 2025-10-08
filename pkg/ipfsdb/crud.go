@@ -49,7 +49,12 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 	}
 
 	for i, col := range schema.Columns {
-		row[col.Name] = values[i]
+		// Validate and cast the value based on the column type
+		val, err := ValidateAndCastValue(values[i], col.Type)
+		if err != nil {
+			return fmt.Errorf("validation error for column '%s': %w", col.Name, err)
+		}
+		row[col.Name] = val
 	}
 
 	// 5. Add the new row to IPFS
@@ -200,31 +205,45 @@ func evaluateExpression(row map[string]interface{}, expr ast.Expression) (bool, 
 			}
 		}
 
+		// Try boolean comparison
+		leftBool, leftIsBool := left.(bool)
+		rightBool, rightIsBool := right.(bool)
+
+		if leftIsBool && rightIsBool {
+			switch e.Operator {
+			case "=":
+				return leftBool == rightBool, nil
+			case "!=":
+				return leftBool != rightBool, nil
+			default:
+				return false, fmt.Errorf("unsupported operator '%s' for boolean comparison", e.Operator)
+			}
+		}
+
 		// Fallback to string comparison
 		leftStr, leftIsStr := left.(string)
 		rightStr, rightIsStr := right.(string)
 
-		if !leftIsStr || !rightIsStr {
-			return false, fmt.Errorf("cannot compare types %T and %T", left, right)
+		if leftIsStr && rightIsStr {
+			switch e.Operator {
+			case "=":
+				return leftStr == rightStr, nil
+			case "!=":
+				return leftStr != rightStr, nil
+			case ">":
+				return leftStr > rightStr, nil
+			case "<":
+				return leftStr < rightStr, nil
+			case ">=":
+				return leftStr >= rightStr, nil
+			case "<=":
+				return leftStr <= rightStr, nil
+			default:
+				return false, fmt.Errorf("unsupported comparison operator: %s", e.Operator)
+			}
 		}
 
-		switch e.Operator {
-		case "=":
-			return leftStr == rightStr, nil
-		case "!=":
-			return leftStr != rightStr, nil
-		case ">":
-			return leftStr > rightStr, nil
-		case "<":
-			return leftStr < rightStr, nil
-		case ">=":
-			return leftStr >= rightStr, nil
-		case "<=":
-			return leftStr <= rightStr, nil
-		default:
-			return false, fmt.Errorf("unsupported comparison operator: %s", e.Operator)
-		}
-
+		return false, fmt.Errorf("cannot compare types %T and %T", left, right)
 	case *ast.LikeExpr:
 		left, err := evaluateExpressionValue(row, e.Left)
 		if err != nil {
@@ -272,6 +291,13 @@ func getNumericValue(v interface{}) (float64, bool) {
 	switch val := v.(type) {
 	case float64:
 		return val, true
+	case int64:
+		return float64(val), true
+	case json.Number:
+		f, err := val.Float64()
+		if err == nil {
+			return f, true
+		}
 	case string:
 		f, err := strconv.ParseFloat(val, 64)
 		if err == nil {
@@ -288,6 +314,8 @@ func evaluateExpressionValue(row map[string]interface{}, expr ast.Expression) (i
 	case *ast.Literal:
 		return e.Value, nil
 	case *ast.NumberLiteral:
+		return e.Value, nil
+	case *ast.BooleanLiteral:
 		return e.Value, nil
 	default:
 		return nil, fmt.Errorf("unsupported expression value type: %T", e)
@@ -661,7 +689,31 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 		return err
 	}
 
-	// 4. Find the row to update
+	// 4. Load the schema to get column types
+	schema, err := LoadSchema(sh, table.SchemaCID)
+	if err != nil {
+		return err
+	}
+
+	var columnType string
+	for _, col := range schema.Columns {
+		if col.Name == setColumn {
+			columnType = col.Type
+			break
+		}
+	}
+
+	if columnType == "" {
+		return fmt.Errorf("column '%s' not found in table '%s'", setColumn, tableName)
+	}
+
+	// 5. Validate and cast the new value
+	castedValue, err := ValidateAndCastValue(setValue, columnType)
+	if err != nil {
+		return fmt.Errorf("validation error for column '%s': %w", setColumn, err)
+	}
+
+	// 6. Find and update rows
 	var updated bool
 	for i, rowCID := range table.Rows {
 		row, err := LoadRow(sh, rowCID)
@@ -675,16 +727,16 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 		}
 
 		if include {
-			// 5. Update the row
-			row[setColumn] = setValue
+			// 7. Update the row with the casted value
+			row[setColumn] = castedValue
 
-			// 6. Add the updated row to IPFS
+			// 8. Add the updated row to IPFS
 			newRowCID, err := AddObject(sh, row)
 			if err != nil {
 				return err
 			}
 
-			// 7. Update the table with the new row CID
+			// 9. Update the table with the new row CID
 			table.Rows[i] = newRowCID
 			updated = true
 		}
@@ -694,25 +746,25 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 		return fmt.Errorf("no rows found to update")
 	}
 
-	// 8. Update the table in IPFS
+	// 10. Update the table in IPFS
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
 		return err
 	}
 
-	// 9. Update the database with the new table CID
+	// 11. Update the database with the new table CID
 	db.Tables[tableName] = newTableCID
 
-	// 10. Update the database in IPFS
+	// 12. Update the database in IPFS
 	newDbCID, err := AddObject(sh, db)
 	if err != nil {
 		return err
 	}
 
-	// 11. Update the cache
+	// 13. Update the cache
 	UpdateCache(dbName, newDbCID)
 
-	// 12. Update the IPNS record in the background
+	// 14. Update the IPNS record in the background
 	publishAsync(sh, dbName, newDbCID)
 	return nil
 }

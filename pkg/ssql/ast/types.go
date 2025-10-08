@@ -48,6 +48,12 @@ type NumberLiteral struct {
 	Value float64
 }
 
+// BooleanLiteral represents a boolean literal.
+
+type BooleanLiteral struct {
+	Value bool
+}
+
 // Identifier represents a column name.	
 
 type Identifier struct {
@@ -60,6 +66,7 @@ func (LikeExpr) isExpression()       {}
 func (InExpr) isExpression()         {}
 func (Literal) isExpression()        {}
 func (NumberLiteral) isExpression()  {}
+func (BooleanLiteral) isExpression() {}
 func (Identifier) isExpression()      {}
 
 // Column represents a column in a table

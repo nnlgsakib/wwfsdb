@@ -40,7 +40,7 @@ With a stable foundation, this stage focuses on adding powerful new capabilities
     - `LIMIT` / `OFFSET` for result pagination.
     - `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`).
 
-- [ ] **2. Implement Full Data Type Support:**
+- [✅] **2. Implement Full Data Type Support:**
   - **Problem:** All data is currently treated as a string, regardless of the schema's definition.
   - **Solution:** Implement type validation, casting, and storage that respects schema types (`INTEGER`, `BOOLEAN`, etc.). This should be designed alongside the Protocol Buffers migration in Stage 3 for maximum efficiency.
 

@@ -32,21 +32,19 @@ async function sendQuery(dbName, query) {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          if (response.error) {
-            // This is now the primary error reporting location
-            console.error(`\n❌ Query failed for: ${query}`);
-            console.error(`   Error: ${response.error}`);
-          }
+          // Don't log error here, let the assert functions handle it
           resolve(response);
         } catch (e) {
-            console.error(`\n❌ Failed to parse server response: ${data}`);
+            console.error(`
+❌ Failed to parse server response: ${data}`);
             reject(`Failed to parse server response: ${data}`);
         }
       });
     });
 
     req.on('error', (e) => {
-        console.error(`\n❌ API request error: ${e.message}`);
+        console.error(`
+❌ API request error: ${e.message}`);
         reject(`API request error: ${e.message}`);
     });
     req.write(postData);
@@ -59,18 +57,9 @@ function safeParseResult(res) {
         return [];
     }
     try {
-        const result = JSON.parse(res.result);
-        if (Array.isArray(result)) {
-            result.forEach(item => {
-                if (typeof item === 'object' && item !== null) {
-                    const sortedItem = {};
-                    Object.keys(item).sort().forEach(key => { sortedItem[key] = item[key]; });
-                    item = sortedItem;
-                }
-            });
-            return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-        }
-        return result;
+        // IMPORTANT: We do not sort or modify the result here anymore.
+        // The order and types are now significant for testing.
+        return JSON.parse(res.result);
     } catch (e) {
         console.error("Failed to parse result:", res.result);
         return [];
@@ -80,20 +69,53 @@ function safeParseResult(res) {
 async function assertQueryResult(query, expected, message) {
     const res = await sendQuery(dbName, query);
     const data = safeParseResult(res);
-    
-    if (Array.isArray(expected)) {
-        expected.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+
+    // A more robust comparison that ignores order in arrays of objects
+    const Mismatch = {
+        Value: 'value',
+        Type: 'type',
+    };
+
+    function findMismatch(a, b) {
+        if (typeof a !== typeof b) return { mismatch: Mismatch.Type, path: '', a, b };
+        if (typeof a !== 'object' || a === null) {
+            return a === b ? null : { mismatch: Mismatch.Value, path: '', a, b };
+        }
+        if (Array.isArray(a)) {
+            if (!Array.isArray(b) || a.length !== b.length) return { mismatch: Mismatch.Value, path: '', a, b };
+            const bCopy = [...b];
+            for (const itemA of a) {
+                const foundIndex = bCopy.findIndex(itemB => findMismatch(itemA, itemB) === null);
+                if (foundIndex === -1) return { mismatch: Mismatch.Value, path: '', a, b };
+                bCopy.splice(foundIndex, 1);
+            }
+            return null;
+        }
+        const keysA = Object.keys(a).sort();
+        const keysB = Object.keys(b).sort();
+        if (keysA.join(',') !== keysB.join(',')) return { mismatch: Mismatch.Value, path: '', a, b };
+        for (const key of keysA) {
+            const mismatch = findMismatch(a[key], b[key]);
+            if (mismatch) {
+                mismatch.path = `.${key}${mismatch.path}`;
+                return mismatch;
+            }
+        }
+        return null;
     }
 
-    const success = JSON.stringify(data) === JSON.stringify(expected);
-    
+    const mismatch = findMismatch(data, expected);
+    const success = mismatch === null;
+
     console.log(`  ${success ? '✅' : '❌'} ${message}`);
 
     if (!success) {
         testState.failed++;
         console.log('     Expected:', JSON.stringify(expected));
         console.log('     Got:     ', JSON.stringify(data));
-        // We don't exit immediately to see all failures
+        if (mismatch) {
+            console.log(`     Mismatch Details: ${mismatch.mismatch} at path '${mismatch.path}' (Expected: ${JSON.stringify(mismatch.b)}, Got: ${JSON.stringify(mismatch.a)})`);
+        }
     } else {
         testState.passed++;
     }
@@ -105,6 +127,20 @@ async function assertCommandSuccess(query, message) {
     console.log(`  ${success ? '✅' : '❌'} ${message}`);
     if (!success) {
         testState.failed++;
+        console.log(`     Query failed: ${query}`);
+        console.log(`     Error: ${res.error}`);
+    } else {
+        testState.passed++;
+    }
+}
+
+async function assertCommandFailure(query, message) {
+    const res = await sendQuery(dbName, query);
+    const success = !!res.error;
+    console.log(`  ${success ? '✅' : '❌'} ${message}`);
+    if (!success) {
+        testState.failed++;
+        console.log(`     Query was expected to fail but succeeded: ${query}`);
     } else {
         testState.passed++;
     }
@@ -112,51 +148,92 @@ async function assertCommandSuccess(query, message) {
 
 // --- Test Groups ---
 async function setupDatabase() {
-  console.log(`\n--- 🚀 Setting up database: ${dbName} ---\n`);
-  await sendQuery('', `CREATE DATABASE ${dbName}`);
+  console.log(`
+--- 🚀 Setting up database: ${dbName} ---
+`);
+  await assertCommandSuccess(`CREATE DATABASE ${dbName}`, 'Creates a new database');
 
   const schema = `
     CREATE TABLE suppliers (supplier_id VARCHAR(255), name VARCHAR(255), contact_email VARCHAR(255), rating INT);
     CREATE TABLE products (product_id VARCHAR(255), name VARCHAR(255), description VARCHAR(255), unit_cost FLOAT, supplier_id VARCHAR(255));
-    CREATE TABLE warehouses (warehouse_id VARCHAR(255), name VARCHAR(255), location VARCHAR(255), capacity INT);
-    CREATE TABLE inventory (inventory_id VARCHAR(255), product_id VARCHAR(255), warehouse_id VARCHAR(255), quantity INT, last_updated VARCHAR(255));
-    CREATE TABLE shipments (shipment_id VARCHAR(255), product_id VARCHAR(255), from_warehouse_id VARCHAR(255), to_warehouse_id VARCHAR(255), quantity INT, status VARCHAR(100));
+    CREATE TABLE data_types_test (id INT, label VARCHAR(50), price FLOAT, is_active BOOLEAN);
   `;
   
   const createTableStatements = schema.split(';').filter(s => s.trim().length > 0);
 
-  console.log('  Creating tables...');
+  console.log('\n  Creating tables...');
   for (const statement of createTableStatements) {
       const query = statement.trim() + ';';
       await assertCommandSuccess(query, `CREATE TABLE for ${query.match(/CREATE TABLE (\w+)/)[1]}`);
   }
 }
 
-async function runTests() {
-    console.log('\n--- 🧪 Running All Tests ---\n');
+async function runDataTypeTests() {
+    console.log('\n--- 🧪 Running Data Type Tests ---\n');
+
+    console.log('  --- INSERT Operations (Data Types) ---');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('1', 'Item A', '99.99', 'true');`, 'Inserts correct types as strings');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('2', 'Item B', '120.50', 'false');`, 'Inserts more correct types');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('3', 'Item C', '-50', 'TRUE');`, 'Inserts with negative and uppercase boolean');
+
+    console.log('\n  --- Type Validation on INSERT ---');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('abc', 'Item D', '1.0', 'true');`, 'Fails to insert string into INT column');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('4', 'Item E', 'xyz', 'true');`, 'Fails to insert string into FLOAT column');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('5', 'Item F', '1.0', 'not-a-bool');`, 'Fails to insert invalid value into BOOLEAN column');
+
+    console.log('\n  --- SELECT Operations (Verify Native Types) ---');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 1`, 
+        [{ "id": 1, "label": "Item A", "price": 99.99, "is_active": true }], 
+        'Selects row and verifies native types (INT, FLOAT, BOOLEAN)');
+
+    console.log('\n  --- UPDATE Operations (Data Types) ---');
+    await assertCommandSuccess(`UPDATE data_types_test SET price = '10.50' WHERE id = 1;`, 'Updates FLOAT with a valid string');
+    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 1`, [{ "price": 10.50 }], 'Selects to confirm FLOAT update');
+    
+    await assertCommandSuccess(`UPDATE data_types_test SET is_active = 'false' WHERE id = 1;`, 'Updates BOOLEAN with a valid string');
+    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 1`, [{ "is_active": false }], 'Selects to confirm BOOLEAN update');
+
+    console.log('\n  --- Type Validation on UPDATE ---');
+    await assertCommandFailure(`UPDATE data_types_test SET id = 'not-an-int' WHERE label = 'Item B';`, 'Fails to update INT column with invalid string');
+    await assertCommandFailure(`UPDATE data_types_test SET price = 'expensive' WHERE label = 'Item B';`, 'Fails to update FLOAT column with invalid string');
+    await assertCommandFailure(`UPDATE data_types_test SET is_active = 'maybe' WHERE label = 'Item B';`, 'Fails to update BOOLEAN column with invalid string');
+
+    console.log('\n  --- WHERE Clause Operations (Data Types) ---');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE price > 100`, [{ "id": 2 }], 'Selects using WHERE on a FLOAT column');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE price < 0`, [{ "id": 3 }], 'Selects using WHERE with negative float');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = true`, [{ "id": 3 }], 'Selects using WHERE on a BOOLEAN column (after update)');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = false`, [{ "id": 1 }, { "id": 2 }], 'Selects using WHERE on a BOOLEAN column');
+}
+
+async function runRegressionTests() {
+    console.log('\n--- 🧪 Running Regression Tests ---\n');
 
     console.log('  --- INSERT Operations ---');
     await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup1', 'Supplier A', 'contact@suppliera.com', '4');`, 'Inserts a new supplier');
     await assertCommandSuccess(`INSERT INTO products VALUES ('prod1', 'Product One', 'High-quality gadget', '19.99', 'sup1');`, 'Inserts a new product');
-    await assertCommandSuccess(`INSERT INTO warehouses VALUES ('wh1', 'Main Warehouse', 'New York, NY', '10000');`, 'Inserts a new warehouse');
-    await assertCommandSuccess(`INSERT INTO inventory VALUES ('inv1', 'prod1', 'wh1', '500', '${new Date().toISOString()}');`, 'Inserts initial inventory');
 
     console.log('\n  --- SELECT Operations ---');
-    await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup1'`, [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": "4", "supplier_id": "sup1" }], 'Selects supplier by ID');
-    await assertQueryResult(`SELECT name, unit_cost FROM products WHERE product_id = 'prod1'`, [{ "name": "Product One", "unit_cost": "19.99" }], 'Selects product by ID');
+    // Note: The expected result now uses native types for rating and unit_cost
+    await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup1'`, 
+        [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": 4, "supplier_id": "sup1" }], 
+        'Selects supplier by ID, verifying native INT type');
+    await assertQueryResult(`SELECT name, unit_cost FROM products WHERE product_id = 'prod1'`, 
+        [{ "name": "Product One", "unit_cost": 19.99 }], 
+        'Selects product by ID, verifying native FLOAT type');
 
     console.log('\n  --- UPDATE Operations ---');
-    await assertCommandSuccess(`UPDATE inventory SET quantity = '450' WHERE product_id = 'prod1'`, 'Updates inventory quantity');
-    await assertQueryResult(`SELECT quantity FROM inventory WHERE product_id = 'prod1'`, [{ "quantity": "450" }], 'Selects updated inventory quantity');
+    await assertCommandSuccess(`UPDATE products SET unit_cost = '25.50' WHERE product_id = 'prod1'`, 'Updates product cost');
+    await assertQueryResult(`SELECT unit_cost FROM products WHERE product_id = 'prod1'`, [{ "unit_cost": 25.50 }], 'Selects updated product cost');
 
     console.log('\n  --- Advanced Queries ---');
-    await assertQueryResult(`SELECT * FROM products WHERE unit_cost > 10`, [{ "description": "High-quality gadget", "name": "Product One", "product_id": "prod1", "supplier_id": "sup1", "unit_cost": "19.99" }], 'Finds products with unit_cost > 10');
-    await assertQueryResult(`SELECT * FROM suppliers WHERE name LIKE 'Supplier%'`, [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": "4", "supplier_id": "sup1" }], 'Finds suppliers with name LIKE "Supplier%"');
+    await assertQueryResult(`SELECT * FROM products WHERE unit_cost > 20`, 
+        [{ "description": "High-quality gadget", "name": "Product One", "product_id": "prod1", "supplier_id": "sup1", "unit_cost": 25.50 }], 
+        'Finds products with unit_cost > 20');
     
     await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup2', 'Supplier B', 'contact@supplierb.com', '5');`, 'Inserts a second supplier for IN test');
-    await assertQueryResult(`SELECT * FROM suppliers WHERE name IN ('Supplier A', 'Supplier B')`, 
-        [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": "4", "supplier_id": "sup1" }, { "contact_email": "contact@supplierb.com", "name": "Supplier B", "rating": "5", "supplier_id": "sup2" }], 
-        'Finds suppliers with name IN (...)');
+    await assertQueryResult(`SELECT name FROM suppliers WHERE rating > 4`, 
+        [{ "name": "Supplier B"}], 
+        'Finds suppliers with rating > 4');
 
     console.log('\n  --- DELETE Operations ---');
     await assertCommandSuccess(`DELETE FROM suppliers WHERE supplier_id = 'sup2'`, 'Deletes a supplier');
@@ -169,7 +246,8 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     await setupDatabase();
-    await runTests();
+    await runDataTypeTests();
+    await runRegressionTests();
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

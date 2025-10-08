@@ -52,6 +52,8 @@ const (
 	OR       = "OR"
 	LIKE     = "LIKE"
 	IN       = "IN"
+	TRUE     = "TRUE"
+	FALSE    = "FALSE"
 )
 
 var keywords = map[string]TokenType{
@@ -72,6 +74,8 @@ var keywords = map[string]TokenType{
 	"OR":       OR,
 	"LIKE":     LIKE,
 	"IN":       IN,
+	"TRUE":     TRUE,
+	"FALSE":    FALSE,
 }
 
 func LookupIdent(ident string) TokenType {
