@@ -82,7 +82,7 @@ This stage is focused on internal improvements that make the project faster, mor
   - **Problem:** The SQL parser currently only accepts string literals in the `VALUES` clause of an `INSERT` statement, forcing users to quote all values, which is incorrect for non-string types.
   - **Solution:** Extend the parser to support multiple literal types (e.g., numbers, booleans) in the `VALUES` clause, consistent with the defined schema types.
 
-- [ ] **7. Prevent Overwriting Tables on Creation:**
+- [✅] **7. Prevent Overwriting Tables on Creation:**
   - **Problem:** The system currently allows creating a table with a name that already exists within the same database, silently overwriting the original table and potentially causing data loss.
   - **Solution:** Modify the table creation logic (`Migrate` function) to check if a table with the given name already exists in the database. If it does, return an error instead of overwriting it.
 

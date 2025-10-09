@@ -14,7 +14,18 @@ import (
 func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
-	// 1. Convert ssql.Schema to pb.Schema and add to IPFS
+	// 1. Load the database
+	db, err := LoadDatabase(sh, dbName)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if table already exists
+	if _, ok := db.Tables[tableName]; ok {
+		return "", fmt.Errorf("table '%s' already exists in database '%s'", tableName, dbName)
+	}
+
+	// 2. Convert ssql.Schema to pb.Schema and add to IPFS
 	pbSchema := &pb.Schema{}
 	for _, col := range schema.Columns {
 		pbSchema.Columns = append(pbSchema.Columns, &pb.Column{Name: col.Name, Type: col.Type})
@@ -24,21 +35,15 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 		return "", err
 	}
 
-	// 2. Create a new table
+	// 3. Create a new table
 	table := &pb.Table{
 		SchemaCid: schemaCID,
 		Rows:      []string{},
 		Indexes:   make(map[string]string),
 	}
 
-	// 3. Add the table to IPFS
+	// 4. Add the table to IPFS
 	tableCID, err := AddObject(sh, table)
-	if err != nil {
-		return "", err
-	}
-
-	// 4. Load the database
-	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
 		return "", err
 	}
