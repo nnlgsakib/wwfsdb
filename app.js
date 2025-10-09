@@ -63,7 +63,12 @@ function safeParseResult(res) {
         return [];
     }
     try {
-        return JSON.parse(res.result.result);
+        const data = JSON.parse(res.result.result);
+        // If the result is an object with a 'rows' property, return the rows.
+        if (data && typeof data === 'object' && Array.isArray(data.rows)) {
+            return data.rows;
+        }
+        return data;
     } catch (e) {
         // This can happen for non-SELECT queries that return a simple string.
         return res.result.result;
@@ -134,12 +139,26 @@ async function assertQueryResult(query, expected, message) {
 
 async function assertCommandSuccess(query, message) {
     const res = await sendQuery(dbName, query);
-    const success = !res.error;
+    const data = safeParseResult(res);
+    const upperQuery = query.trim().toUpperCase();
+    let success = !res.error;
+
+    if (success && (upperQuery.startsWith('UPDATE') || upperQuery.startsWith('DELETE'))) {
+        success = typeof data === 'string' && /successful\. \d+ rows affected\.$/.test(data);
+    }
+
     console.log(`  ${success ? '✅' : '❌'} ${message}`);
     if (!success) {
         testState.failed++;
-        console.log(`     Query failed: ${query}`);
-        console.log(`     Error: ${res.error.message || res.error}`);
+        console.log(`     Query failed or returned unexpected result: ${query}`);
+        if (res.error) {
+            console.log(`     Error: ${res.error.message || res.error}`);
+        } else {
+            console.log(`     Got:     `, data);
+            if (upperQuery.startsWith('UPDATE') || upperQuery.startsWith('DELETE')) {
+                console.log(`     Expected a string like "UPDATE/DELETE successful. N rows affected."`);
+            }
+        }
     } else {
         testState.passed++;
     }
