@@ -8,7 +8,7 @@ This document outlines the development roadmap for WWSFDB, organized into sequen
 
 This stage focuses on core architecture and correctness, addressing fundamental issues that block future development and impact stability.
 
-- [✅] ] **1. Overhaul the SQL Parsing Engine:**
+- [✅] **1. Overhaul the SQL Parsing Engine:**
   - **Problem:** The current regex-based parser is fragile, inefficient, and severely limits SQL support. It also leads to redundant parsing logic between the `cmd` and `pkg` layers.
   - **Solution:**
     - Build a robust, non-regex-based SQL parser internally. A standard approach is to first create a lexer to tokenize the input string, then build a recursive descent parser to construct an Abstract Syntax Tree (AST).
@@ -31,14 +31,14 @@ This stage focuses on core architecture and correctness, addressing fundamental 
 
 With a stable foundation, this stage focuses on adding powerful new capabilities to the database.
 
-- [✅] **1. Expand SQL Language Support:**
+- [ ] **1. Expand SQL Language Support:**
   - **Prerequisite:** Stage 1 SQL Parser Overhaul.
   - **Features to Add:**
-    - `SELECT <columns>`: Allow querying for specific columns, not just `*`.
-    - **Complex `WHERE` Clauses:** Support `AND`, `OR`, `LIKE`, `IN`, and operators (`>`, `<`, etc.).
-    - `ORDER BY` for sorting results.
-    - `LIMIT` / `OFFSET` for result pagination.
-    - `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`).
+    - [✅] `SELECT <columns>`: Allow querying for specific columns, not just `*`.
+    - [✅] **Complex `WHERE` Clauses:** Support `AND`, `OR`, `LIKE`, `IN`, and operators (`>`, `<`, etc.).
+    - [ ] `ORDER BY` for sorting results.
+    - [ ] `LIMIT` / `OFFSET` for result pagination.
+    - [ ] `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`).
 
 - [✅] **2. Implement Full Data Type Support:**
   - **Problem:** All data is currently treated as a string, regardless of the schema's definition.
@@ -124,3 +124,40 @@ This stage introduces features crucial for making the database secure, reliable,
 - [ ] **6. Add Integration with a Pinning Service:**
   - **Problem:** Data persistence relies on the local IPFS node. If the node is offline or the data is garbage-collected, the database is lost.
   - **Solution:** Add configuration options to allow the server to automatically pin the latest database CID to one or more remote IPFS pinning services (e.g., Pinata, Web3.Storage, Infura) via their APIs.
+---
+
+## Stage 6: Advanced Features for Complex Applications
+
+This stage focuses on implementing the advanced SQL features and performance optimizations required to support highly complex, data-intensive applications. All items in this stage depend on a comprehensive test suite (Stage 3.2).
+
+- [ ] **1. Implement Relational `JOIN` Operations:**
+  - **Problem:** The database currently lacks any support for relational queries, which is a primary requirement for complex applications.
+  - **Solution:**
+    - Extend the SQL parser to recognize `INNER JOIN` and `LEFT JOIN` syntax.
+    - Design and implement a join-aware query execution engine. This will involve loading data from multiple tables and combining rows based on join conditions, which is a significant architectural addition.
+  - **Impact:** This is the most critical feature for enabling relational data models.
+
+- [ ] **2. Complete SQL Language Support (from Stage 2):**
+  - **Problem:** Core SQL features for sorting, pagination, and analytics are missing.
+  - **Solution:**
+    - Implement `ORDER BY` to allow sorting of query results.
+    - Implement `LIMIT` and `OFFSET` for efficient result pagination.
+    - Implement `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`) to enable analytical queries.
+  - **Impact:** Unlocks reporting, analytics, and efficient handling of large result sets.
+
+- [ ] **3. Develop a Query Optimizer:**
+  - **Problem:** The database currently executes queries exactly as written, which can be highly inefficient.
+  - **Solution:** Introduce a basic query optimizer that analyzes a query's AST and available indexes to create a more efficient execution plan. For example, it could reorder `WHERE` clause evaluations or choose the best index to use for a `JOIN` operation.
+  - **Impact:** Drastically improves performance for complex queries without requiring the user to write perfectly optimized SQL.
+
+- [ ] **4. Add Support for Subqueries:**
+  - **Problem:** Queries cannot be nested, limiting their expressive power.
+  - **Solution:** Enhance the parser and query executor to handle subqueries in `WHERE` clauses (e.g., `... WHERE id IN (SELECT ...)`), `FROM` clauses, and `SELECT` columns.
+  - **Impact:** Enables more sophisticated and dynamic queries that are common in complex applications.
+
+- [ ] **5. Enhance Indexing for Complex Queries:**
+  - **Problem:** The current indexing is simple and only supports single-column lookups.
+  - **Solution:**
+    - Implement support for multi-column (composite) indexes.
+    - Allow indexes to be used for more than just equality checks (e.g., range scans for `>` or `<` operators).
+  - **Impact:** Improves the performance of a much wider range of queries.
