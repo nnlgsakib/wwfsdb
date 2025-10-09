@@ -107,32 +107,31 @@ func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 }
 
 // Update modifies a row in a table
-// Update modifies a row in a table
-func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expression, where ast.Expression) error {
+func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expression, where ast.Expression) (int, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 2. Get the table CID from the database
 	tableCID, ok := db.Tables[tableName]
 	if !ok {
-		return fmt.Errorf("table %s not found in database %s", tableName, dbName)
+		return 0, fmt.Errorf("table %s not found in database %s", tableName, dbName)
 	}
 
 	// 3. Load the table
 	table, err := LoadTable(sh, tableCID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 4. Load the schema to get column types
 	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var columnType string
@@ -144,7 +143,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 	}
 
 	if columnType == "" {
-		return fmt.Errorf("column '%s' not found in table '%s'", setColumn, tableName)
+		return 0, fmt.Errorf("column '%s' not found in table '%s'", setColumn, tableName)
 	}
 
 	// 5. Validate and cast the new value
@@ -157,25 +156,25 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 	case *ast.BooleanLiteral:
 		valueStr = strconv.FormatBool(v.Value)
 	default:
-		return fmt.Errorf("unsupported expression type in SET clause: %T", setValue)
+		return 0, fmt.Errorf("unsupported expression type in SET clause: %T", setValue)
 	}
 
 	castedValue, err := ValidateAndCastValue(valueStr, columnType)
 	if err != nil {
-		return fmt.Errorf("validation error for column '%s': %w", setColumn, err)
+		return 0, fmt.Errorf("validation error for column '%s': %w", setColumn, err)
 	}
 
 	// 6. Find and update rows
-	var updated bool
+	var updatedCount int
 	for i, rowCID := range table.Rows {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		include, err := evaluateExpression(row, where)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		if include {
@@ -185,7 +184,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 			// First, update indexes as if the old row is being deleted
 			table, err = UpdateIndexesOnDelete(sh, table, rowCID, oldRow)
 			if err != nil {
-				return fmt.Errorf("failed to update indexes on delete part of update: %w", err)
+				return 0, fmt.Errorf("failed to update indexes on delete part of update: %w", err)
 			}
 
 			// Update the row data with the new value
@@ -194,29 +193,29 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 			// Add the updated row to IPFS to get a new CID
 			newRowCID, err := AddObject(sh, row)
 			if err != nil {
-				return err
+				return 0, err
 			}
 
 			// Now, update indexes as if the new row is being inserted
 			table, err = UpdateIndexesOnInsert(sh, table, newRowCID, row)
 			if err != nil {
-				return fmt.Errorf("failed to update indexes on insert part of update: %w", err)
+				return 0, fmt.Errorf("failed to update indexes on insert part of update: %w", err)
 			}
 
 			// Update the table with the new row CID
 			table.Rows[i] = newRowCID
-			updated = true
+			updatedCount++
 		}
 	}
 
-	if !updated {
-		return fmt.Errorf("no rows found to update")
+	if updatedCount == 0 {
+		return 0, nil
 	}
 
 	// 10. Update the table in IPFS
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 11. Update the database with the new table CID
@@ -225,7 +224,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 	// 12. Update the database in IPFS
 	newDbCID, err := AddObject(sh, db)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 13. Update the cache
@@ -233,59 +232,59 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 
 	// 14. Update the IPNS record in the background
 	publishAsync(sh, dbName, newDbCID)
-	return nil
+	return updatedCount, nil
 }
 
 // Delete removes a row from a table
-func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
+func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) (int, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 2. Get the table CID from the database
 	tableCID, ok := db.Tables[tableName]
 	if !ok {
-		return fmt.Errorf("table %s not found in database %s", tableName, dbName)
+		return 0, fmt.Errorf("table %s not found in database %s", tableName, dbName)
 	}
 
 	// 3. Load the table
 	table, err := LoadTable(sh, tableCID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 4. Find the row to delete
 	var newRows []string
-	var deleted bool
+	var deletedCount int
 	for _, rowCID := range table.Rows {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		include, err := evaluateExpression(row, where)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		if include {
-			deleted = true
+			deletedCount++
 			// Update indexes before deleting the row
 			table, err = UpdateIndexesOnDelete(sh, table, rowCID, row)
 			if err != nil {
-				return fmt.Errorf("failed to update indexes on delete: %w", err)
+				return 0, fmt.Errorf("failed to update indexes on delete: %w", err)
 			}
 		} else {
 			newRows = append(newRows, rowCID)
 		}
 	}
 
-	if !deleted {
-		return fmt.Errorf("no rows found to delete")
+	if deletedCount == 0 {
+		return 0, nil
 	}
 
 	// 5. Update the table with the new row list
@@ -294,7 +293,7 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
 	// 6. Update the table in IPFS
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 7. Update the database with the new table CID
@@ -303,7 +302,7 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
 	// 8. Update the database in IPFS
 	newDbCID, err := AddObject(sh, db)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 9. Update the cache
@@ -311,7 +310,7 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) error {
 
 	// 10. Update the IPNS record in the background
 	publishAsync(sh, dbName, newDbCID)
-	return nil
+	return deletedCount, nil
 }
 
 // LoadRow loads a row from IPFS

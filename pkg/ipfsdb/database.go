@@ -194,20 +194,20 @@ rows, err := Query(ipfsAPI, dbName, s.Table, s.Columns, s.Where)
 		return "INSERT successful", nil
 
 	case *ast.UpdateStmt:
-		err = Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where)
+		affectedRows, err := Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where)
 		if err != nil {
 			return "", err
 		}
 
-		return "UPDATE successful", nil
+		return fmt.Sprintf("UPDATE successful. %d rows affected.", affectedRows), nil
 
 	case *ast.DeleteStmt:
-		err = Delete(ipfsAPI, dbName, s.Table, s.Where)
+		affectedRows, err := Delete(ipfsAPI, dbName, s.Table, s.Where)
 		if err != nil {
 			return "", err
 		}
 
-		return "DELETE successful", nil
+		return fmt.Sprintf("DELETE successful. %d rows affected.", affectedRows), nil
 
 	case *ast.CreateIndexStmt:
 		err = CreateIndex(ipfsAPI, dbName, s.Table, s.Column)

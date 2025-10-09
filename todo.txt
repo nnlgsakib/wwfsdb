@@ -105,7 +105,7 @@ This stage introduces features crucial for making the database secure, reliable,
   - **Problem:** The `UPDATE ... SET` clause parser only accepts string literals, forcing incorrect quoting for numbers and booleans. This is inconsistent with `INSERT` and standard SQL.
   - **Solution:** Modify the `parseUpdateStatement` function in the parser to handle number and boolean literals, similar to how the `INSERT` parser does.
 
-- [ ] **2. Align `UPDATE`/`DELETE` Behavior with SQL Standards:**
+- [✅] **2. Align `UPDATE`/`DELETE` Behavior with SQL Standards:**
   - **Problem:** `UPDATE` and `DELETE` operations currently return an error when no rows are affected, which is not standard SQL behavior.
   - **Solution:** Change the `Update` and `Delete` functions to return the number of affected rows. The RPC response should be updated to include this count, and an "0 rows affected" message should be treated as a success.
 
