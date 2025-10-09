@@ -95,3 +95,32 @@ This final stage focuses on making the project accessible, understandable, and e
 - [✅] **1. Write a Comprehensive `README.md`:** Cover project vision, architecture, installation, detailed usage examples, and the development roadmap.
 - [ ] **2. Improve CLI Command Help Text:** Write detailed `Long` descriptions for each command with clear syntax examples.
 - [ ] **3. Add In-Code Documentation:** Add comments to clarify complex functions, data structures, and design decisions, especially in the IPFS interaction logic.
+---
+
+## Stage 5: Production Readiness
+
+This stage introduces features crucial for making the database secure, reliable, and truly production-ready.
+
+- [ ] **1. Refactor `UPDATE` Parser to Support All Literal Types:**
+  - **Problem:** The `UPDATE ... SET` clause parser only accepts string literals, forcing incorrect quoting for numbers and booleans. This is inconsistent with `INSERT` and standard SQL.
+  - **Solution:** Modify the `parseUpdateStatement` function in the parser to handle number and boolean literals, similar to how the `INSERT` parser does.
+
+- [ ] **2. Align `UPDATE`/`DELETE` Behavior with SQL Standards:**
+  - **Problem:** `UPDATE` and `DELETE` operations currently return an error when no rows are affected, which is not standard SQL behavior.
+  - **Solution:** Change the `Update` and `Delete` functions to return the number of affected rows. The RPC response should be updated to include this count, and an "0 rows affected" message should be treated as a success.
+
+- [ ] **3. Refactor Client-Side Query Handling:**
+  - **Problem:** The `query` and `shell` commands fetch data and then make a second RPC call (`GetTableSchema`) just to get headers for printing, which is inefficient.
+  - **Solution:** Modify the `wwfs.ExecuteQuery` RPC method for `SELECT` statements to return a single, structured object containing both the column headers and the rows of data. This eliminates the need for the second RPC call and simplifies client logic.
+
+- [ ] **4. Implement Advanced Transaction Support:**
+  - **Problem:** Multiple operations cannot be grouped into a single atomic unit.
+  - **Solution:** Introduce `BEGIN`, `COMMIT`, and `ROLLBACK` commands. The server's dispatcher will need to queue operations for a given client session and only execute/publish the final CID upon receiving a `COMMIT`. A `ROLLBACK` would clear the queue.
+
+- [ ] **5. Introduce an Access Control Layer:**
+  - **Problem:** There is no security model; any user can modify any database.
+  - **Solution:** Design a basic authentication and authorization system. This could involve associating a public key with database creation and requiring write operations to be signed by the corresponding private key.
+
+- [ ] **6. Add Integration with a Pinning Service:**
+  - **Problem:** Data persistence relies on the local IPFS node. If the node is offline or the data is garbage-collected, the database is lost.
+  - **Solution:** Add configuration options to allow the server to automatically pin the latest database CID to one or more remote IPFS pinning services (e.g., Pinata, Web3.Storage, Infura) via their APIs.
