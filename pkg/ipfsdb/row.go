@@ -42,6 +42,33 @@ func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 }
 
 // InsertDB adds a new row to an in-memory database object
+
+func evaluateInsertExpression(expr ast.Expression) (interface{}, error) {
+	switch e := expr.(type) {
+	case *ast.Literal:
+		return e.Value, nil
+	case *ast.NumberLiteral:
+		return e.Value, nil
+	case *ast.BooleanLiteral:
+		return e.Value, nil
+	case *ast.PrefixExpression:
+		right, err := evaluateInsertExpression(e.Right)
+		if err != nil {
+			return nil, err
+		}
+
+		if e.Operator == "-" {
+			if v, ok := right.(float64); ok {
+				return -v, nil
+			}
+			return nil, fmt.Errorf("unary minus operator can only be applied to numbers, got %T", right)
+		}
+		return nil, fmt.Errorf("unsupported prefix operator in INSERT: %s", e.Operator)
+	default:
+		return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
+	}
+}
+
 func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.Expression) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
@@ -70,18 +97,12 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.E
 
 	for i, col := range schema.Columns {
 		expr := values[i]
-		var valueStr string
 
-		switch v := expr.(type) {
-		case *ast.Literal:
-			valueStr = v.Value
-		case *ast.NumberLiteral:
-			valueStr = strconv.FormatFloat(v.Value, 'f', -1, 64)
-		case *ast.BooleanLiteral:
-			valueStr = strconv.FormatBool(v.Value)
-		default:
-			return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
+		rawValue, err := evaluateInsertExpression(expr)
+		if err != nil {
+			return nil, err
 		}
+		valueStr := fmt.Sprintf("%v", rawValue)
 
 		// Validate and cast the value based on the column type
 		val, err := ValidateAndCastValue(valueStr, col.Type)

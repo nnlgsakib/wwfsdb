@@ -24,6 +24,7 @@ Example:
 	Run: func(cmd *cobra.Command, args []string) {
 		dbName := args[0]
 		c := client.NewClient(viper.GetString("rpc-server"))
+		privateKey := viper.GetString("private-key")
 		var sessionID string
 		inTransaction := false
 
@@ -72,7 +73,7 @@ Example:
 			}
 
 			// --- Execute Query ---
-			result, err := c.ExecuteQuery(dbName, queryString, sessionID)
+			result, err := c.ExecuteQuery(dbName, queryString, sessionID, privateKey)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				if inTransaction {

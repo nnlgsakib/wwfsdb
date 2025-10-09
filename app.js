@@ -1,4 +1,5 @@
 const http = require('http');
+const crypto = require('crypto');
 
 const dbName = 'testdb' + Date.now();
 
@@ -6,10 +7,43 @@ const testState = {
     passed: 0,
     failed: 0,
     requestId: 1,
+    privateKey: null,
 };
 
+// --- Signing function ---
+function sign(privateKeyHex, message) {
+    try {
+        const ecdh = crypto.createECDH('prime256v1');
+        ecdh.setPrivateKey(privateKeyHex, 'hex');
+        const publicKey = ecdh.getPublicKey('hex', 'uncompressed');
+
+        const privateKeyJwk = {
+            kty: 'EC',
+            crv: 'P-256',
+            d: Buffer.from(privateKeyHex, 'hex').toString('base64url'),
+            x: Buffer.from(publicKey.substring(2, 66), 'hex').toString('base64url'),
+            y: Buffer.from(publicKey.substring(66), 'hex').toString('base64url'),
+        };
+
+        const privateKeyObject = crypto.createPrivateKey({ key: privateKeyJwk, format: 'jwk' });
+
+        const signer = crypto.createSign('sha256');
+        signer.update(message);
+        signer.end();
+
+        const signature = signer.sign({ key: privateKeyObject, dsaEncoding: 'ieee-p1363' });
+
+        return signature.toString('hex');
+    } catch (e) {
+        console.error(`
+❌ Signing error: ${e.message}`);
+        return null;
+    }
+}
+
+
 // --- Core API Communication (JSON-RPC) ---
-async function sendQuery(dbName, query, sessionID = null) {
+async function sendQuery(dbName, query, sessionID = null, privateKey = null) {
   return new Promise((resolve, reject) => {
     const params = {
         db_name: dbName,
@@ -17,6 +51,18 @@ async function sendQuery(dbName, query, sessionID = null) {
     };
     if (sessionID) {
         params.session_id = sessionID;
+    }
+
+    // New: Add signature for write queries if private key is provided
+    if (privateKey && !query.trim().toUpperCase().startsWith('SELECT') && !query.trim().toUpperCase().startsWith('BEGIN')) {
+        const message = `${dbName}:${query}`;
+        const signature = sign(privateKey, message);
+        if (signature) {
+            params.signature = signature;
+        } else {
+            // Signing failed, reject the promise
+            return reject('Failed to sign the query.');
+        }
     }
 
     const postData = JSON.stringify({
@@ -80,8 +126,8 @@ function safeParseResult(res) {
     }
 }
 
-async function assertQueryResult(query, expected, message, sessionID = null) {
-    const res = await sendQuery(dbName, query, sessionID);
+async function assertQueryResult(query, expected, message, { sessionID = null, privateKey = testState.privateKey } = {}) {
+    const res = await sendQuery(dbName, query, sessionID, privateKey);
     if (res.error) {
         console.log(`  ❌ ${message}`);
         testState.failed++;
@@ -142,8 +188,8 @@ async function assertQueryResult(query, expected, message, sessionID = null) {
     }
 }
 
-async function assertCommandSuccess(query, message, sessionID = null) {
-    const res = await sendQuery(dbName, query, sessionID);
+async function assertCommandSuccess(query, message, { sessionID = null, privateKey = testState.privateKey } = {}) {
+    const res = await sendQuery(dbName, query, sessionID, privateKey);
     const data = safeParseResult(res);
     const upperQuery = query.trim().toUpperCase();
     let success = !res.error;
@@ -169,8 +215,8 @@ async function assertCommandSuccess(query, message, sessionID = null) {
     }
 }
 
-async function assertCommandFailure(query, message, sessionID = null) {
-    const res = await sendQuery(dbName, query, sessionID);
+async function assertCommandFailure(query, message, { sessionID = null, privateKey = null } = {}) {
+    const res = await sendQuery(dbName, query, sessionID, privateKey);
     const success = !!res.error;
     console.log(`  ${success ? '✅' : '❌'} ${message}`);
     if (!success) {
@@ -183,60 +229,94 @@ async function assertCommandFailure(query, message, sessionID = null) {
 
 // --- Test Groups ---
 async function setupDatabase() {
-  console.log(`
+    console.log(`
 --- 🚀 Setting up database: ${dbName} ---
 `);
-  await assertCommandSuccess(`CREATE DATABASE ${dbName}`, 'Creates a new database');
+    // Manually handle database creation to capture the private key
+    console.log(`  Creating database: ${dbName}...`);
+    const createRes = await sendQuery('', `CREATE DATABASE ${dbName}`);
+    if (createRes.error) {
+        console.log(`  ❌ Failed to create database: ${createRes.error.message || createRes.error}`);
+        testState.failed++;
+        throw new Error("Database creation failed, cannot proceed.");
+    }
+    try {
+        const createResult = JSON.parse(createRes.result.result);
+        testState.privateKey = createResult.private_key;
+        console.log(`  ✅ Creates a new database (IPNS: ${createResult.program_id})`);
+        console.log(`     Private Key stored for subsequent tests.`);
+        testState.passed++;
+    } catch (e) {
+        console.log(`  ❌ Failed to parse CREATE DATABASE response: ${e.message}`);
+        testState.failed++;
+        throw new Error("Could not parse private key, cannot proceed.");
+    }
 
-  const schema = `
+
+    const schema = `
     CREATE TABLE suppliers (supplier_id VARCHAR(255), name VARCHAR(255), contact_email VARCHAR(255), rating INT);
     CREATE TABLE products (product_id VARCHAR(255), name VARCHAR(255), description VARCHAR(255), unit_cost FLOAT, supplier_id VARCHAR(255));
     CREATE TABLE data_types_test (id INT, label VARCHAR(50), price FLOAT, is_active BOOLEAN);
   `;
-  
-  const createTableStatements = schema.split(';').filter(s => s.trim().length > 0);
 
-  console.log('\n  Creating tables...');
-  for (const statement of createTableStatements) {
-      const query = statement.trim() + ';';
-      await assertCommandSuccess(query, `CREATE TABLE for ${query.match(/CREATE TABLE (\w+)/)[1]}`);
-  }
+    const createTableStatements = schema.split(';').filter(s => s.trim().length > 0);
+
+    console.log('\n  Creating tables...');
+    for (const statement of createTableStatements) {
+        const query = statement.trim() + ';';
+        // Use the stored private key for this write operation
+        await assertCommandSuccess(query, `CREATE TABLE for ${query.match(/CREATE TABLE (\w+)/)[1]}`, { privateKey: testState.privateKey });
+    }
+}
+
+async function runAuthTests() {
+    console.log('\n--- 🧪 Running Authentication Tests ---\n');
+
+    console.log('  --- Write Operations (Auth) ---');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES (998, 'Auth Test 1', 1.0, true);`, 'Fails to insert a row without a private key', { privateKey: null });
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES (999, 'Auth Test 2', 1.0, true);`, 'Fails to insert a row with a wrong private key', { privateKey: 'a'.repeat(64) });
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (1000, 'Auth Test 3', 1.0, true);`, 'Succeeds to insert a row with the correct private key', { privateKey: testState.privateKey });
+
+    console.log('\n  --- Read Operations (No Auth) ---');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE id = 1000`, 
+        [{ "id": 1000 }], 
+        'Selects data without a private key', { privateKey: null });
 }
 
 async function runDataTypeTests() {
     console.log('\n--- 🧪 Running Data Type Tests ---\n');
 
     console.log('  --- INSERT Operations (Data Types) ---');
-    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('1', 'Item A', '99.99', 'true');`, 'Inserts correct types as strings');
-    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('2', 'Item B', '120.50', 'false');`, 'Inserts more correct types');
-    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('3', 'Item C', '-50', 'TRUE');`, 'Inserts with negative and uppercase boolean');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (1, 'Item A', 99.99, true);`, 'Inserts correct types');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (2, 'Item B', 120.50, false);`, 'Inserts more correct types');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (3, 'Item C', -50, TRUE);`, 'Inserts with negative and uppercase boolean');
 
     console.log('\n  --- Type Validation on INSERT ---');
-    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('abc', 'Item D', '1.0', 'true');`, 'Fails to insert string into INT column');
-    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('4', 'Item E', 'xyz', 'true');`, 'Fails to insert string into FLOAT column');
-    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('5', 'Item F', '1.0', 'not-a-bool');`, 'Fails to insert invalid value into BOOLEAN column');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES ('abc', 'Item D', 1.0, true);`, 'Fails to insert string into INT column');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES (4, 'Item E', 'xyz', true);`, 'Fails to insert string into FLOAT column');
+    await assertCommandFailure(`INSERT INTO data_types_test VALUES (5, 'Item F', 1.0, 'not-a-bool');`, 'Fails to insert invalid value into BOOLEAN column');
 
     console.log('\n  --- SELECT Operations (Verify Native Types) ---');
     await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 1`, 
         [{ "id": 1, "label": "Item A", "price": 99.99, "is_active": true }], 
-        'Selects row and verifies native types (INT, FLOAT, BOOLEAN)');
+        'Selects row and verifies native types (INT, FLOAT, BOOLEAN)', { privateKey: null });
 
     console.log('\n  --- UPDATE Operations (Data Types) ---');
-    await assertCommandSuccess(`UPDATE data_types_test SET price = '10.50' WHERE id = 1;`, 'Updates FLOAT with a valid string');
-    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 1`, [{ "price": 10.50 }], 'Selects to confirm FLOAT update');
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 10.50 WHERE id = 1;`, 'Updates FLOAT with a valid value');
+    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 1`, [{ "price": 10.50 }], 'Selects to confirm FLOAT update', { privateKey: null });
     
-    await assertCommandSuccess(`UPDATE data_types_test SET is_active = 'false' WHERE id = 1;`, 'Updates BOOLEAN with a valid string');
-    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 1`, [{ "is_active": false }], 'Selects to confirm BOOLEAN update');
+    await assertCommandSuccess(`UPDATE data_types_test SET is_active = false WHERE id = 1;`, 'Updates BOOLEAN with a valid value');
+    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 1`, [{ "is_active": false }], 'Selects to confirm BOOLEAN update', { privateKey: null });
 
     console.log('\n  --- UPDATE Operations (Native Literals) ---');
     await assertCommandSuccess(`UPDATE data_types_test SET price = 20.75 WHERE id = 2;`, 'Updates FLOAT with a native float literal');
-    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 2`, [{ "price": 20.75 }], 'Selects to confirm native FLOAT update');
+    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 2`, [{ "price": 20.75 }], 'Selects to confirm native FLOAT update', { privateKey: null });
 
     await assertCommandSuccess(`UPDATE data_types_test SET is_active = true WHERE id = 2;`, 'Updates BOOLEAN with a native boolean literal');
-    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 2`, [{ "is_active": true }], 'Selects to confirm native BOOLEAN update');
+    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 2`, [{ "is_active": true }], 'Selects to confirm native BOOLEAN update', { privateKey: null });
 
     await assertCommandSuccess(`UPDATE data_types_test SET id = 10 WHERE id = 1;`, 'Updates INT with a native integer literal');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE id = 10`, [{ "id": 10 }], 'Selects to confirm native INT update');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE id = 10`, [{ "id": 10 }], 'Selects to confirm native INT update', { privateKey: null });
 
     console.log('\n  --- Type Validation on UPDATE ---');
     await assertCommandFailure(`UPDATE data_types_test SET id = 'not-an-int' WHERE label = 'Item B';`, 'Fails to update INT column with invalid string');
@@ -244,44 +324,44 @@ async function runDataTypeTests() {
     await assertCommandFailure(`UPDATE data_types_test SET is_active = 'maybe' WHERE label = 'Item B';`, 'Fails to update BOOLEAN column with invalid string');
 
     console.log('\n  --- WHERE Clause Operations (Data Types) ---');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE price > 100`, [], 'Selects using WHERE on a FLOAT column (after update)');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE price < 0`, [{ "id": 3 }], 'Selects using WHERE with negative float');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = true`, [{ "id": 2 }, { "id": 3 }], 'Selects using WHERE on a BOOLEAN column (after update)');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = false`, [{ "id": 10 }], 'Selects using WHERE on a BOOLEAN column (after update)');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE price > 100`, [], 'Selects using WHERE on a FLOAT column (after update)', { privateKey: null });
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE price < 0`, [{ "id": 3 }], 'Selects using WHERE with negative float', { privateKey: null });
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = true`, [{ "id": 1000 }, { "id": 2 }, { "id": 3 }], 'Selects using WHERE on a BOOLEAN column (after update)', { privateKey: null });
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = false`, [{ "id": 10 }], 'Selects using WHERE on a BOOLEAN column (after update)', { privateKey: null });
 }
 
 async function runRegressionTests() {
     console.log('\n--- 🧪 Running Regression Tests ---\n');
 
     console.log('  --- INSERT Operations ---');
-    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup1', 'Supplier A', 'contact@suppliera.com', '4');`, 'Inserts a new supplier');
-    await assertCommandSuccess(`INSERT INTO products VALUES ('prod1', 'Product One', 'High-quality gadget', '19.99', 'sup1');`, 'Inserts a new product');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup1', 'Supplier A', 'contact@suppliera.com', 4);`, 'Inserts a new supplier');
+    await assertCommandSuccess(`INSERT INTO products VALUES ('prod1', 'Product One', 'High-quality gadget', 19.99, 'sup1');`, 'Inserts a new product');
 
     console.log('\n  --- SELECT Operations ---');
     await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup1'`, 
         [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": 4, "supplier_id": "sup1" }], 
-        'Selects supplier by ID, verifying native INT type');
+        'Selects supplier by ID, verifying native INT type', { privateKey: null });
     await assertQueryResult(`SELECT name, unit_cost FROM products WHERE product_id = 'prod1'`, 
         [{ "name": "Product One", "unit_cost": 19.99 }], 
-        'Selects product by ID, verifying native FLOAT type');
+        'Selects product by ID, verifying native FLOAT type', { privateKey: null });
 
     console.log('\n  --- UPDATE Operations ---');
-    await assertCommandSuccess(`UPDATE products SET unit_cost = '25.50' WHERE product_id = 'prod1'`, 'Updates product cost');
-    await assertQueryResult(`SELECT unit_cost FROM products WHERE product_id = 'prod1'`, [{ "unit_cost": 25.50 }], 'Selects updated product cost');
+    await assertCommandSuccess(`UPDATE products SET unit_cost = 25.50 WHERE product_id = 'prod1'`, 'Updates product cost');
+    await assertQueryResult(`SELECT unit_cost FROM products WHERE product_id = 'prod1'`, [{ "unit_cost": 25.50 }], 'Selects updated product cost', { privateKey: null });
 
     console.log('\n  --- Advanced Queries ---');
     await assertQueryResult(`SELECT * FROM products WHERE unit_cost > 20`, 
         [{ "description": "High-quality gadget", "name": "Product One", "product_id": "prod1", "supplier_id": "sup1", "unit_cost": 25.50 }], 
-        'Finds products with unit_cost > 20');
+        'Finds products with unit_cost > 20', { privateKey: null });
     
-    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup2', 'Supplier B', 'contact@supplierb.com', '5');`, 'Inserts a second supplier for IN test');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup2', 'Supplier B', 'contact@supplierb.com', 5);`, 'Inserts a second supplier for IN test');
     await assertQueryResult(`SELECT name FROM suppliers WHERE rating > 4`, 
         [{ "name": "Supplier B"}], 
-        'Finds suppliers with rating > 4');
+        'Finds suppliers with rating > 4', { privateKey: null });
 
     console.log('\n  --- DELETE Operations ---');
     await assertCommandSuccess(`DELETE FROM suppliers WHERE supplier_id = 'sup2'`, 'Deletes a supplier');
-    await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup2'`, [], 'Selects to confirm deletion');
+    await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup2'`, [], 'Selects to confirm deletion', { privateKey: null });
 }
 
 async function runIndexingTests() {
@@ -295,26 +375,26 @@ async function runIndexingTests() {
     console.log('\n  --- Query using Index ---');
     await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier A'`, 
         [{ "supplier_id": "sup1" }], 
-        'Selects using an index on the WHERE clause column');
+        'Selects using an index on the WHERE clause column', { privateKey: null });
 
     console.log('\n  --- Index Maintenance ---');
-    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup3', 'Supplier C', 'contact@supplierc.com', '3');`, 'Inserts a new supplier (should update index)');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup3', 'Supplier C', 'contact@supplierc.com', 3);`, 'Inserts a new supplier (should update index)');
     await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier C'`, 
         [{ "supplier_id": "sup3" }], 
-        'Selects new supplier using the index');
+        'Selects new supplier using the index', { privateKey: null });
 
     await assertCommandSuccess(`UPDATE suppliers SET name = 'Supplier C Updated' WHERE supplier_id = 'sup3';`, 'Updates a supplier name (should update index)');
     await assertQueryResult(`SELECT supplier_id FROM suppliers WHERE name = 'Supplier C Updated'`, 
         [{ "supplier_id": "sup3" }], 
-        'Selects updated supplier using the index');
+        'Selects updated supplier using the index', { privateKey: null });
     await assertQueryResult(`SELECT * FROM suppliers WHERE name = 'Supplier C'`, 
         [], 
-        'Selects old name to confirm index update');
+        'Selects old name to confirm index update', { privateKey: null });
 
     await assertCommandSuccess(`DELETE FROM suppliers WHERE name = 'Supplier A';`, 'Deletes a supplier (should update index)');
     await assertQueryResult(`SELECT * FROM suppliers WHERE name = 'Supplier A'`, 
         [], 
-        'Selects deleted supplier to confirm index update');
+        'Selects deleted supplier to confirm index update', { privateKey: null });
 }
 
 async function runTransactionTests() {
@@ -323,7 +403,7 @@ async function runTransactionTests() {
     let sessionID = null;
 
     console.log('  --- BEGIN Transaction ---');
-    let res = await sendQuery(dbName, 'BEGIN');
+    let res = await sendQuery(dbName, 'BEGIN', null, testState.privateKey);
     if (res.error) {
         console.log(`  ❌ Failed to BEGIN transaction: ${res.error.message || res.error}`);
         testState.failed++;
@@ -334,23 +414,23 @@ async function runTransactionTests() {
     testState.passed++;
 
     console.log('\n  --- Operations within Transaction ---');
-    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('100', 'Transacted Item', '100.00', 'true');`, 'Inserts a new row within transaction', sessionID);
-    await assertCommandSuccess(`UPDATE data_types_test SET price = 150.00 WHERE id = 100;`, 'Updates a row within transaction', sessionID);
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (100, 'Transacted Item', 100.00, true);`, 'Inserts a new row within transaction', { sessionID });
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 150.00 WHERE id = 100;`, 'Updates a row within transaction', { sessionID });
 
     console.log('\n  --- Verify Isolation (Outside Transaction) ---');
-    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, [], 'Changes are NOT visible outside transaction');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, [], 'Changes are NOT visible outside transaction', { privateKey: null });
 
     console.log('\n  --- COMMIT Transaction ---');
-    await assertCommandSuccess('COMMIT;', 'Commits the transaction', sessionID);
+    await assertCommandSuccess('COMMIT;', 'Commits the transaction', { sessionID });
     sessionID = null; // Clear session ID after commit
 
     console.log('\n  --- Verify Changes After COMMIT ---');
     await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, 
         [{ "id": 100, "label": "Transacted Item", "price": 150.00, "is_active": true }], 
-        'Changes ARE visible after commit');
+        'Changes ARE visible after commit', { privateKey: null });
 
     console.log('\n  --- BEGIN another Transaction for ROLLBACK ---');
-    res = await sendQuery(dbName, 'BEGIN');
+    res = await sendQuery(dbName, 'BEGIN', null, testState.privateKey);
     if (res.error) {
         console.log(`  ❌ Failed to BEGIN transaction for rollback: ${res.error.message || res.error}`);
         testState.failed++;
@@ -361,18 +441,18 @@ async function runTransactionTests() {
     testState.passed++;
 
     console.log('\n  --- Operations within Transaction (for Rollback) ---');
-    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('101', 'Rollback Item', '200.00', 'false');`, 'Inserts a new row for rollback', sessionID);
-    await assertCommandSuccess(`UPDATE data_types_test SET price = 250.00 WHERE id = 101;`, 'Updates a row for rollback', sessionID);
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES (101, 'Rollback Item', 200.00, false);`, 'Inserts a new row for rollback', { sessionID });
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 250.00 WHERE id = 101;`, 'Updates a row for rollback', { sessionID });
 
     console.log('\n  --- Verify Isolation (Outside Transaction) before Rollback ---');
-    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible outside transaction before rollback');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible outside transaction before rollback', { privateKey: null });
 
     console.log('\n  --- ROLLBACK Transaction ---');
-    await assertCommandSuccess('ROLLBACK;', 'Rolls back the transaction', sessionID);
+    await assertCommandSuccess('ROLLBACK;', 'Rolls back the transaction', { sessionID });
     sessionID = null; // Clear session ID after rollback
 
     console.log('\n  --- Verify Changes After ROLLBACK ---');
-    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible after rollback');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible after rollback', { privateKey: null });
 
     console.log('\n  --- Test for invalid COMMIT/ROLLBACK without BEGIN ---');
     await assertCommandFailure('COMMIT;', 'Fails to COMMIT without an active transaction');
@@ -385,10 +465,11 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     await setupDatabase();
+    await runAuthTests();
     await runDataTypeTests();
     await runRegressionTests();
     await runIndexingTests();
-    await runTransactionTests(); // New: Run transaction tests
+    await runTransactionTests();
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

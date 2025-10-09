@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	shell "github.com/ipfs/go-ipfs-api"
+	"github.com/nnlgsakib/wwfsdb/pkg/auth"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
 	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
@@ -16,27 +17,36 @@ import (
 )
 
 // CreateDatabase creates a new database
-func CreateDatabase(ipfsAPI, dbName string) (string, error) {
+func CreateDatabase(ipfsAPI, dbName string) (map[string]string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
-	// 1. Create a new database
+	// 1. Generate key pair for owner
+	privKey, err := auth.GenerateKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate key pair: %w", err)
+	}
+	pubKeyStr := auth.EncodePublicKey(&privKey.PublicKey)
+	privKeyStr := auth.EncodePrivateKey(privKey)
+
+	// 2. Create a new database
 	db := &pb.Database{
-		Tables: make(map[string]string),
+		Tables:         make(map[string]string),
+		OwnerPublicKey: pubKeyStr,
 	}
 
-	// 2. Add the database to IPFS
+	// 3. Add the database to IPFS
 	dbCID, err := AddObject(sh, db)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// 3. Create a new IPNS key
+	// 4. Create a new IPNS key
 	key, err := sh.KeyGen(context.Background(), dbName, shell.KeyGen.Size(2048))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// 4. Publish the database CID to the new key in the background
+	// 5. Publish the database CID to the new key in the background
 	go func() {
 		_, err := sh.PublishWithDetails(dbCID, key.Name, 0, 0, false)
 		if err != nil {
@@ -44,7 +54,7 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 		}
 	}()
 
-	// 5. Save the database info to the registry
+	// 6. Save the database info to the registry
 	entry := &pb.RegistryEntry{
 		DbName:    dbName,
 		ProgramId: key.Id,
@@ -52,18 +62,23 @@ func CreateDatabase(ipfsAPI, dbName string) (string, error) {
 	}
 	entryData, err := proto.Marshal(entry)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	err = PutToCache([]byte("registry:"+dbName), entryData)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Update the cache with the new database CID
+	// 7. Update the cache with the new database CID
 	UpdateCache(dbName, dbCID)
 
-	return key.Id, nil
+	result := map[string]string{
+		"program_id":  key.Id,
+		"private_key": privKeyStr,
+	}
+
+	return result, nil
 }
 
 // LoadDatabase loads a database from IPFS
@@ -88,7 +103,7 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*pb.Database, error) {
 		}
 
 		// 3. Resolve the IPNS name to get the database CID
-		dbCID, err = sh.Resolve(entry.ProgramId)
+	dbCID, err = sh.Resolve(entry.ProgramId)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +143,7 @@ func AddObject(sh *shell.Shell, obj proto.Message) (string, error) {
 
 // ExecuteQuery is the top-level function for single, auto-committed queries.
 // It loads the database, executes the statement, and saves the result.
-func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
+func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// Use the new parser
@@ -156,17 +171,29 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 
 	// Handle CREATE DATABASE separately as it doesn't operate on an existing DB
 	if s, ok := stmt.(*ast.CreateDatabaseStmt); ok {
-		_, err := CreateDatabase(ipfsAPI, s.Name)
+		result, err := CreateDatabase(ipfsAPI, s.Name)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Database '%s' created successfully.", s.Name), nil
+		jsonResult, err := json.Marshal(result)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal create database result: %w", err)
+		}
+		return string(jsonResult), nil
 	}
 
 	// Load the database
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
 		return "", err
+	}
+
+	// Verify signature for write operations
+	if !IsReadQuery(stmt) {
+		err := VerifySignature(db, dbName, query, signature)
+		if err != nil {
+			return "", fmt.Errorf("unauthorized: %w", err)
+		}
 	}
 
 	// Execute the statement on the loaded database state
@@ -210,7 +237,8 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.State
 		}
 		return newDb, fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
 	case *ast.SelectStmt:
-		rows, err := QueryDB(sh, db, s.Table, s.Columns, s.Where)
+	
+rows, err := QueryDB(sh, db, s.Table, s.Columns, s.Where)
 		if err != nil {
 			return nil, "", err
 		}
@@ -252,4 +280,31 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.State
 	default:
 		return nil, "", fmt.Errorf("unsupported query type: %T", s)
 	}
+}
+
+// IsReadQuery checks if a statement is a read-only query.
+func IsReadQuery(stmt ast.Statement) bool {
+	_, ok := stmt.(*ast.SelectStmt)
+	return ok
+}
+
+// VerifySignature checks if a signature is valid for a given query and database.
+func VerifySignature(db *pb.Database, dbName, query, signature string) error {
+	if db.OwnerPublicKey == "" {
+		// For backward compatibility, if no public key is set, allow the operation.
+		return nil
+	}
+	if signature == "" {
+		return fmt.Errorf("signature required for write operations")
+	}
+
+	message := fmt.Sprintf("%s:%s", dbName, query)
+	valid, err := auth.Verify(db.OwnerPublicKey, message, signature)
+	if err != nil {
+		return fmt.Errorf("error verifying signature: %w", err)
+	}
+	if !valid {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }

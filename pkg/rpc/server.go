@@ -21,10 +21,11 @@ import (
 
 // Job represents a query to be executed.
 type Job struct {
-	DbName  string
-	Query   string
-	Reply   *ExecuteQueryResult
-	ErrChan chan error
+	DbName    string
+	Query     string
+	Signature string
+	Reply     *ExecuteQueryResult
+	ErrChan   chan error
 }
 
 // Transaction holds the state for a series of operations.
@@ -125,7 +126,7 @@ func (d *Dispatcher) RollbackTransaction(sessionID string) error {
 	return nil
 }
 
-func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt ast.Statement) (string, error) {
+func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt ast.Statement, query, signature string) (string, error) {
 	d.mu.Lock()
 	txn, ok := d.transactions[sessionID]
 	if !ok {
@@ -138,6 +139,14 @@ func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt ast.Statement) 
 	defer txn.mu.Unlock()
 
 	txn.lastAccess = time.Now()
+
+	// Verify signature for write operations
+	if !ipfsdb.IsReadQuery(stmt) {
+		err := ipfsdb.VerifySignature(txn.dbState, txn.dbName, query, signature)
+		if err != nil {
+			return "", fmt.Errorf("unauthorized: %w", err)
+		}
+	}
 
 	// Execute the statement against the transaction's in-memory database state.
 	newDbState, result, err := ipfsdb.ExecuteOnDB(txn.sh, txn.dbName, txn.dbState, stmt)
@@ -167,7 +176,7 @@ func (d *Dispatcher) cleanupStaleTransactions() {
 // worker processes jobs from a single database queue.
 func (d *Dispatcher) worker(queue chan Job) {
 	for job := range queue {
-		result, err := ipfsdb.ExecuteQuery(d.ipfsApi, job.DbName, job.Query)
+		result, err := ipfsdb.ExecuteQuery(d.ipfsApi, job.DbName, job.Query, job.Signature)
 		if err != nil {
 			job.ErrChan <- err
 		} else {

@@ -18,11 +18,12 @@ var updateCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		dbName := args[0]
 		queryString := args[1]
+		privateKey := viper.GetString("private-key")
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery(dbName, queryString, "")
+		result, err := c.ExecuteQuery(dbName, queryString, "", privateKey)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

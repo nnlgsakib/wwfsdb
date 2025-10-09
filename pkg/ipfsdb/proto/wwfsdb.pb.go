@@ -229,10 +229,11 @@ func (x *Table) GetIndexes() map[string]string {
 
 // Database represents the entire database.
 type Database struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tables        map[string]string      `protobuf:"bytes,1,rep,name=tables,proto3" json:"tables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // map[table_name]table_cid
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Tables         map[string]string      `protobuf:"bytes,1,rep,name=tables,proto3" json:"tables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // map[table_name]table_cid
+	OwnerPublicKey string                 `protobuf:"bytes,2,opt,name=owner_public_key,json=ownerPublicKey,proto3" json:"owner_public_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Database) Reset() {
@@ -270,6 +271,13 @@ func (x *Database) GetTables() map[string]string {
 		return x.Tables
 	}
 	return nil
+}
+
+func (x *Database) GetOwnerPublicKey() string {
+	if x != nil {
+		return x.OwnerPublicKey
+	}
+	return ""
 }
 
 // IndexNode contains a list of CIDs for a given index key.
@@ -446,9 +454,10 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\aindexes\x18\x03 \x03(\v2\x19.proto.Table.IndexesEntryR\aindexes\x1a:\n" +
 	"\fIndexesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"z\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa4\x01\n" +
 	"\bDatabase\x123\n" +
-	"\x06tables\x18\x01 \x03(\v2\x1b.proto.Database.TablesEntryR\x06tables\x1a9\n" +
+	"\x06tables\x18\x01 \x03(\v2\x1b.proto.Database.TablesEntryR\x06tables\x12(\n" +
+	"\x10owner_public_key\x18\x02 \x01(\tR\x0eownerPublicKey\x1a9\n" +
 	"\vTablesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1f\n" +

@@ -68,6 +68,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.wwfsdb.yaml)")
 	rootCmd.PersistentFlags().StringP("rpc-server", "r", "http://localhost:8080/rpc", "JSON-RPC server address")
+	rootCmd.PersistentFlags().String("private-key", "", "Private key for write operations")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

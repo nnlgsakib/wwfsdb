@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -19,13 +20,25 @@ var createDatabaseCmd = &cobra.Command{
 		queryString := args[0]
 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery("", queryString, "") // dbName is not needed here
+		// For CREATE DATABASE, dbName and privateKey are not needed in the client call itself
+		result, err := c.ExecuteQuery("", queryString, "", "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		fmt.Println(result)
+		var createResult map[string]string
+		if err := json.Unmarshal([]byte(result.Result), &createResult); err != nil {
+			fmt.Fprintln(os.Stderr, "Error parsing create database result:", err)
+			// Fallback to printing the raw result if JSON parsing fails
+			fmt.Println(result.Result)
+			return
+		}
+
+		fmt.Printf("Database created successfully.\n")
+		fmt.Printf("Program ID (IPNS): %s\n", createResult["program_id"])
+		fmt.Printf("\nIMPORTANT: Save this private key. It is required for all future write operations.\n")
+		fmt.Printf("Private Key: %s\n", createResult["private_key"])
 	},
 }
 

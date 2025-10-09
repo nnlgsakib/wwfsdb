@@ -36,6 +36,12 @@ type InExpr struct {
 	Values []Expression
 }
 
+// PrefixExpression represents a unary operation (e.g., -5).
+type PrefixExpression struct {
+	Operator string
+	Right    Expression
+}
+
 // Literal represents a string or number literal.	
 
 type Literal struct {
@@ -64,6 +70,7 @@ func (BinaryExpr) isExpression()     {}
 func (ComparisonExpr) isExpression() {}
 func (LikeExpr) isExpression()       {}
 func (InExpr) isExpression()         {}
+func (PrefixExpression) isExpression() {}
 func (Literal) isExpression()        {}
 func (NumberLiteral) isExpression()  {}
 func (BooleanLiteral) isExpression() {}

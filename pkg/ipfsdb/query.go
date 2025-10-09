@@ -290,6 +290,18 @@ func evaluateExpressionValue(row *pb.Row, expr ast.Expression) (interface{}, err
 		return e.Value, nil
 	case *ast.BooleanLiteral:
 		return e.Value, nil
+	case *ast.PrefixExpression:
+		right, err := evaluateExpressionValue(row, e.Right)
+		if err != nil {
+			return nil, err
+		}
+		if e.Operator == "-" {
+			if num, ok := getNumericValue(right); ok {
+				return -num, nil
+			}
+			return nil, fmt.Errorf("unary minus operator can only be applied to numbers")
+		}
+		return nil, fmt.Errorf("unsupported prefix operator: %s", e.Operator)
 	default:
 		return nil, fmt.Errorf("unsupported expression value type: %T", e)
 	}

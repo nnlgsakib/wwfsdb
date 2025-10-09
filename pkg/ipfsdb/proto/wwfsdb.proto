@@ -33,6 +33,7 @@ message Table {
 // Database represents the entire database.
 message Database {
   map<string, string> tables = 1; // map[table_name]table_cid
+  string owner_public_key = 2;
 }
 
 // IndexNode contains a list of CIDs for a given index key.

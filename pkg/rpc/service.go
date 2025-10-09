@@ -25,6 +25,7 @@ type ExecuteQueryArgs struct {
 	DbName    string `json:"db_name"`
 	Query     string `json:"query"`
 	SessionID string `json:"session_id,omitempty"`
+	Signature string `json:"signature,omitempty"`
 }
 
 // ExecuteQueryResult holds the result for the ExecuteQuery method.
@@ -74,7 +75,7 @@ func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *Exec
 
 	// If in a transaction, dispatch to the transaction handler
 	if args.SessionID != "" {
-		result, err := h.Dispatcher.ExecuteInTransaction(args.SessionID, stmt)
+		result, err := h.Dispatcher.ExecuteInTransaction(args.SessionID, stmt, args.Query, args.Signature)
 		if err != nil {
 			return err
 		}
@@ -87,17 +88,18 @@ func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *Exec
 	if _, ok := stmt.(*ast.SelectStmt); !ok {
 		// This is a write operation outside a transaction, use the old queue system
 		job := Job{
-			DbName:  args.DbName,
-			Query:   args.Query,
-			Reply:   reply,
-			ErrChan: make(chan error),
+			DbName:    args.DbName,
+			Query:     args.Query,
+			Signature: args.Signature,
+			Reply:     reply,
+			ErrChan:   make(chan error),
 		}
 		h.Dispatcher.Dispatch(job)
 		return <-job.ErrChan
 	}
 
 	// For SELECT statements, execute immediately
-	result, err := ipfsdb.ExecuteQuery(h.Dispatcher.ipfsApi, args.DbName, args.Query)
+	result, err := ipfsdb.ExecuteQuery(h.Dispatcher.ipfsApi, args.DbName, args.Query, "")
 	if err != nil {
 		return err
 	}

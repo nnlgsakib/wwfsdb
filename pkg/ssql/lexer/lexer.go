@@ -26,6 +26,7 @@ const (
 	GTE      = ">="
 	LTE      = "<="
 	NE       = "!="
+	MINUS    = "-"
 
 	// Delimiters
 	COMMA     = ","
@@ -161,6 +162,8 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(COMMA, l.ch)
 	case '*':
 		tok = newToken(ASTERISK, l.ch)
+	case '-':
+		tok = newToken(MINUS, l.ch)
 	case '\'':
 		tok.Type = STRING
 		tok.Literal = l.readString()

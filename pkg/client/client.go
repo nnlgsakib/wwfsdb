@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/nnlgsakib/wwfsdb/pkg/auth"
 	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
 )
 
@@ -23,6 +24,7 @@ type ExecuteQueryArgs struct {
 	DbName    string `json:"db_name"`
 	Query     string `json:"query"`
 	SessionID string `json:"session_id,omitempty"`
+	Signature string `json:"signature,omitempty"`
 }
 
 type ExecuteQueryResult struct {
@@ -42,11 +44,22 @@ type JSONRPCResponse struct {
 	ID     int             `json:"id"`
 }
 
-func (c *RpcClient) ExecuteQuery(dbName, query, sessionID string) (*ExecuteQueryResult, error) {
+func (c *RpcClient) ExecuteQuery(dbName, query, sessionID, privateKey string) (*ExecuteQueryResult, error) {
+	var signature string
+	var err error
+	if privateKey != "" {
+		message := fmt.Sprintf("%s:%s", dbName, query)
+		signature, err = auth.Sign(privateKey, message)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign query: %w", err)
+		}
+	}
+
 	args := ExecuteQueryArgs{
 		DbName:    dbName,
 		Query:     query,
 		SessionID: sessionID,
+		Signature: signature,
 	}
 	request := JSONRPCRequest{
 		Method: "wwfs.ExecuteQuery",

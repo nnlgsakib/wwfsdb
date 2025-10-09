@@ -53,6 +53,9 @@ func bindFlags() {
 	if err := viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config")); err != nil {
 		fmt.Fprintf(os.Stderr, "Error binding config flag: %s", err)
 	}
+	if err := viper.BindPFlag("private-key", rootCmd.PersistentFlags().Lookup("private-key")); err != nil {
+		fmt.Fprintf(os.Stderr, "Error binding private-key flag: %s", err)
+	}
 
 	// Bind serve command flags if the command exists
 	if serveCmd != nil {

@@ -42,7 +42,7 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 
 		// --- 2. Execute the query using RPC client --- 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery(dbName, queryString, "")
+		result, err := c.ExecuteQuery(dbName, queryString, "", "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
