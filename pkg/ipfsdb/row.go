@@ -107,7 +107,8 @@ func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 }
 
 // Update modifies a row in a table
-func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Expression) error {
+// Update modifies a row in a table
+func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expression, where ast.Expression) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -147,7 +148,19 @@ func Update(ipfsAPI, dbName, tableName, setColumn, setValue string, where ast.Ex
 	}
 
 	// 5. Validate and cast the new value
-	castedValue, err := ValidateAndCastValue(setValue, columnType)
+	var valueStr string
+	switch v := setValue.(type) {
+	case *ast.Literal:
+		valueStr = v.Value
+	case *ast.NumberLiteral:
+		valueStr = strconv.FormatFloat(v.Value, 'f', -1, 64)
+	case *ast.BooleanLiteral:
+		valueStr = strconv.FormatBool(v.Value)
+	default:
+		return fmt.Errorf("unsupported expression type in SET clause: %T", setValue)
+	}
+
+	castedValue, err := ValidateAndCastValue(valueStr, columnType)
 	if err != nil {
 		return fmt.Errorf("validation error for column '%s': %w", setColumn, err)
 	}

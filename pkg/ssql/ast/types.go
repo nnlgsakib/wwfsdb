@@ -83,7 +83,7 @@ type Schema struct {
 // UpdateClause represents a SET clause in an UPDATE statement
 type UpdateClause struct {
 	Column string
-	Value  string
+	Value  Expression
 }
 
 // Node is a marker interface for AST nodes

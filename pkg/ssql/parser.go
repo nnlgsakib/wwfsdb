@@ -538,10 +538,9 @@ func (p *Parser) parseUpdateStatement() *ast.UpdateStmt {
 	if !p.expectPeek(lexer.SET) {
 		return nil
 	}
-	p.nextToken() // consume SET
 
 	setClause := ast.UpdateClause{}
-	if p.curToken.Type != lexer.IDENT {
+	if !p.expectPeek(lexer.IDENT) {
 		p.errors = append(p.errors, "expected column name in SET clause")
 		return nil
 	}
@@ -550,16 +549,18 @@ func (p *Parser) parseUpdateStatement() *ast.UpdateStmt {
 	if !p.expectPeek(lexer.ASSIGN) {
 		return nil
 	}
-	if !p.expectPeek(lexer.STRING) {
-		return nil
-	}
-	setClause.Value = p.curToken.Literal
+
+	p.nextToken()
+	setClause.Value = p.parseExpression(LOWEST)
 	stmt.Set = setClause
 
-	if !p.expectPeek(lexer.WHERE) {
+	if p.peekTokenIs(lexer.WHERE) {
+		p.nextToken()
+		stmt.Where = p.parseWhereClause()
+	} else {
+		p.peekError(lexer.WHERE)
 		return nil
 	}
-	stmt.Where = p.parseWhereClause()
 
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()

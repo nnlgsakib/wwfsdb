@@ -204,16 +204,26 @@ async function runDataTypeTests() {
     await assertCommandSuccess(`UPDATE data_types_test SET is_active = 'false' WHERE id = 1;`, 'Updates BOOLEAN with a valid string');
     await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 1`, [{ "is_active": false }], 'Selects to confirm BOOLEAN update');
 
+    console.log('\n  --- UPDATE Operations (Native Literals) ---');
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 20.75 WHERE id = 2;`, 'Updates FLOAT with a native float literal');
+    await assertQueryResult(`SELECT price FROM data_types_test WHERE id = 2`, [{ "price": 20.75 }], 'Selects to confirm native FLOAT update');
+
+    await assertCommandSuccess(`UPDATE data_types_test SET is_active = true WHERE id = 2;`, 'Updates BOOLEAN with a native boolean literal');
+    await assertQueryResult(`SELECT is_active FROM data_types_test WHERE id = 2`, [{ "is_active": true }], 'Selects to confirm native BOOLEAN update');
+
+    await assertCommandSuccess(`UPDATE data_types_test SET id = 10 WHERE id = 1;`, 'Updates INT with a native integer literal');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE id = 10`, [{ "id": 10 }], 'Selects to confirm native INT update');
+
     console.log('\n  --- Type Validation on UPDATE ---');
     await assertCommandFailure(`UPDATE data_types_test SET id = 'not-an-int' WHERE label = 'Item B';`, 'Fails to update INT column with invalid string');
     await assertCommandFailure(`UPDATE data_types_test SET price = 'expensive' WHERE label = 'Item B';`, 'Fails to update FLOAT column with invalid string');
     await assertCommandFailure(`UPDATE data_types_test SET is_active = 'maybe' WHERE label = 'Item B';`, 'Fails to update BOOLEAN column with invalid string');
 
     console.log('\n  --- WHERE Clause Operations (Data Types) ---');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE price > 100`, [{ "id": 2 }], 'Selects using WHERE on a FLOAT column');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE price > 100`, [], 'Selects using WHERE on a FLOAT column (after update)');
     await assertQueryResult(`SELECT id FROM data_types_test WHERE price < 0`, [{ "id": 3 }], 'Selects using WHERE with negative float');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = true`, [{ "id": 3 }], 'Selects using WHERE on a BOOLEAN column (after update)');
-    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = false`, [{ "id": 1 }, { "id": 2 }], 'Selects using WHERE on a BOOLEAN column');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = true`, [{ "id": 2 }, { "id": 3 }], 'Selects using WHERE on a BOOLEAN column (after update)');
+    await assertQueryResult(`SELECT id FROM data_types_test WHERE is_active = false`, [{ "id": 10 }], 'Selects using WHERE on a BOOLEAN column (after update)');
 }
 
 async function runRegressionTests() {

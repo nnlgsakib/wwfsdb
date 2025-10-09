@@ -101,7 +101,7 @@ This final stage focuses on making the project accessible, understandable, and e
 
 This stage introduces features crucial for making the database secure, reliable, and truly production-ready.
 
-- [ ] **1. Refactor `UPDATE` Parser to Support All Literal Types:**
+- [✅] **1. Refactor `UPDATE` Parser to Support All Literal Types:**
   - **Problem:** The `UPDATE ... SET` clause parser only accepts string literals, forcing incorrect quoting for numbers and booleans. This is inconsistent with `INSERT` and standard SQL.
   - **Solution:** Modify the `parseUpdateStatement` function in the parser to handle number and boolean literals, similar to how the `INSERT` parser does.
 
