@@ -130,7 +130,7 @@ This stage introduces features crucial for making the database secure, reliable,
 
 This stage focuses on implementing the advanced SQL features and performance optimizations required to support highly complex, data-intensive applications. All items in this stage depend on a comprehensive test suite (Stage 3.2).
 
-- [ ] **1. Implement Relational `JOIN` Operations:**
+- [✅] **1. Implement Relational `JOIN` Operations:**
   - **Problem:** The database currently lacks any support for relational queries, which is a primary requirement for complex applications.
   - **Solution:**
     - Extend the SQL parser to recognize `INNER JOIN` and `LEFT JOIN` syntax.

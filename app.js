@@ -298,7 +298,7 @@ async function runDataTypeTests() {
 
     console.log('\n  --- SELECT Operations (Verify Native Types) ---');
     await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 1`, 
-        [{ "id": 1, "label": "Item A", "price": 99.99, "is_active": true }], 
+        [{ "data_types_test.id": 1, "data_types_test.label": "Item A", "data_types_test.price": 99.99, "data_types_test.is_active": true }], 
         'Selects row and verifies native types (INT, FLOAT, BOOLEAN)', { privateKey: null });
 
     console.log('\n  --- UPDATE Operations (Data Types) ---');
@@ -339,7 +339,7 @@ async function runRegressionTests() {
 
     console.log('\n  --- SELECT Operations ---');
     await assertQueryResult(`SELECT * FROM suppliers WHERE supplier_id = 'sup1'`, 
-        [{ "contact_email": "contact@suppliera.com", "name": "Supplier A", "rating": 4, "supplier_id": "sup1" }], 
+        [{ "suppliers.contact_email": "contact@suppliera.com", "suppliers.name": "Supplier A", "suppliers.rating": 4, "suppliers.supplier_id": "sup1" }], 
         'Selects supplier by ID, verifying native INT type', { privateKey: null });
     await assertQueryResult(`SELECT name, unit_cost FROM products WHERE product_id = 'prod1'`, 
         [{ "name": "Product One", "unit_cost": 19.99 }], 
@@ -351,7 +351,7 @@ async function runRegressionTests() {
 
     console.log('\n  --- Advanced Queries ---');
     await assertQueryResult(`SELECT * FROM products WHERE unit_cost > 20`, 
-        [{ "description": "High-quality gadget", "name": "Product One", "product_id": "prod1", "supplier_id": "sup1", "unit_cost": 25.50 }], 
+        [{ "products.description": "High-quality gadget", "products.name": "Product One", "products.product_id": "prod1", "products.supplier_id": "sup1", "products.unit_cost": 25.50 }], 
         'Finds products with unit_cost > 20', { privateKey: null });
     
     await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup2', 'Supplier B', 'contact@supplierb.com', 5);`, 'Inserts a second supplier for IN test');
@@ -426,7 +426,7 @@ async function runTransactionTests() {
 
     console.log('\n  --- Verify Changes After COMMIT ---');
     await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, 
-        [{ "id": 100, "label": "Transacted Item", "price": 150.00, "is_active": true }], 
+        [{ "data_types_test.id": 100, "data_types_test.label": "Transacted Item", "data_types_test.price": 150.00, "data_types_test.is_active": true }], 
         'Changes ARE visible after commit', { privateKey: null });
 
     console.log('\n  --- BEGIN another Transaction for ROLLBACK ---');
@@ -459,6 +459,69 @@ async function runTransactionTests() {
     await assertCommandFailure('ROLLBACK;', 'Fails to ROLLBACK without an active transaction');
 }
 
+async function runJoinTests() {
+    console.log('\n--- 🧪 Running JOIN Tests ---\n');
+
+    console.log('  --- Setting up data for JOIN tests ---');
+    // Clean up previous data to ensure a clean slate
+    await assertCommandSuccess(`DELETE FROM products WHERE 1=1;`, 'Cleans products table');
+    await assertCommandSuccess(`DELETE FROM suppliers WHERE 1=1;`, 'Cleans suppliers table');
+
+    // Insert new data
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup1', 'Join Supplier A', 'jsa@test.com', 5);`, 'Inserts supplier A');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup2', 'Join Supplier B', 'jsb@test.com', 4);`, 'Inserts supplier B');
+    await assertCommandSuccess(`INSERT INTO suppliers VALUES ('sup3', 'Join Supplier C', 'jsc@test.com', 3);`, 'Inserts supplier C (no products)');
+
+    await assertCommandSuccess(`INSERT INTO products VALUES ('prod1', 'Join Product 1', 'From A', 10.0, 'sup1');`, 'Inserts product 1 for supplier A');
+    await assertCommandSuccess(`INSERT INTO products VALUES ('prod2', 'Join Product 2', 'From A', 20.0, 'sup1');`, 'Inserts product 2 for supplier A');
+    await assertCommandSuccess(`INSERT INTO products VALUES ('prod3', 'Join Product 3', 'From B', 30.0, 'sup2');`, 'Inserts product 3 for supplier B');
+
+    console.log('\n  --- INNER JOIN Tests ---');
+    await assertQueryResult(
+        `SELECT suppliers.name, products.name FROM suppliers JOIN products ON suppliers.supplier_id = products.supplier_id;`,
+        [
+            { "suppliers.name": "Join Supplier A", "products.name": "Join Product 1" },
+            { "suppliers.name": "Join Supplier A", "products.name": "Join Product 2" },
+            { "suppliers.name": "Join Supplier B", "products.name": "Join Product 3" }
+        ],
+        'INNER JOIN selects qualified columns'
+    );
+
+    await assertQueryResult(
+        `SELECT * FROM suppliers JOIN products ON suppliers.supplier_id = products.supplier_id WHERE products.unit_cost > 15;`,
+        [
+            { 
+                "suppliers.supplier_id": "sup1", "suppliers.name": "Join Supplier A", "suppliers.contact_email": "jsa@test.com", "suppliers.rating": 5,
+                "products.product_id": "prod2", "products.name": "Join Product 2", "products.description": "From A", "products.unit_cost": 20.0, "products.supplier_id": "sup1"
+            },
+            { 
+                "suppliers.supplier_id": "sup2", "suppliers.name": "Join Supplier B", "suppliers.contact_email": "jsb@test.com", "suppliers.rating": 4,
+                "products.product_id": "prod3", "products.name": "Join Product 3", "products.description": "From B", "products.unit_cost": 30.0, "products.supplier_id": "sup2"
+            }
+        ],
+        'INNER JOIN with SELECT * and a WHERE clause'
+    );
+
+    console.log('\n  --- LEFT JOIN Tests ---');
+    await assertQueryResult(
+        `SELECT suppliers.name, products.name FROM suppliers LEFT JOIN products ON suppliers.supplier_id = products.supplier_id;`,
+        [
+            { "suppliers.name": "Join Supplier A", "products.name": "Join Product 1" },
+            { "suppliers.name": "Join Supplier A", "products.name": "Join Product 2" },
+            { "suppliers.name": "Join Supplier B", "products.name": "Join Product 3" },
+            { "suppliers.name": "Join Supplier C", "products.name": null }
+        ],
+        'LEFT JOIN includes supplier with no products'
+    );
+
+    console.log('\n  --- Ambiguity Tests ---');
+    // This test assumes the DB returns an error for ambiguous columns.
+    await assertCommandFailure(
+        `SELECT name FROM suppliers JOIN products ON suppliers.supplier_id = products.supplier_id;`,
+        'Fails to select ambiguous column "name" without qualifier'
+    );
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -470,6 +533,7 @@ async function main() {
     await runRegressionTests();
     await runIndexingTests();
     await runTransactionTests();
+    await runJoinTests();
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

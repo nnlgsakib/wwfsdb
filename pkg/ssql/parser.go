@@ -3,9 +3,10 @@ package ssql
 import (
 	"fmt"
 	"strconv"
+	"strings"
+
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/lexer"
-	"strings"
 )
 
 type Parser struct {
@@ -31,14 +32,25 @@ const (
 )
 
 var precedences = map[lexer.TokenType]int{
+
 	lexer.ASSIGN:   EQUALS,
+
 	lexer.NE:       EQUALS,
+
 	lexer.LT:       LESSGREATER,
+
 	lexer.GT:       LESSGREATER,
+
 	lexer.AND:      EQUALS,
+
 	lexer.OR:       EQUALS,
+
 	lexer.LIKE:     EQUALS,
+
 	lexer.IN:       EQUALS,
+
+	lexer.JOIN:     CALL, // Not used as infix, but for precedence context
+
 }
 
 type (
@@ -86,7 +98,15 @@ func NewParser(l *lexer.Lexer) *Parser {
 }
 
 func (p *Parser) parseIdentifier() ast.Expression {
-	return &ast.Identifier{Name: p.curToken.Literal}
+	ident := &ast.Identifier{Name: p.curToken.Literal}
+	if p.peekTokenIs(lexer.DOT) {
+		p.nextToken() // consume '.'
+		if p.expectPeek(lexer.IDENT) {
+			ident.TableQualifier = ident.Name
+			ident.Name = p.curToken.Literal
+		}
+	}
+	return ident
 }
 
 func (p *Parser) parseStringLiteral() ast.Expression {
@@ -279,7 +299,6 @@ func (p *Parser) parseRollbackStatement() *ast.RollbackStmt {
 	return stmt
 }
 
-
 func (p *Parser) parseCreateStatement() ast.Statement {
 	p.nextToken() // consume CREATE
 
@@ -460,19 +479,13 @@ func (p *Parser) parseDropStatement() *ast.DropTableStmt {
 func (p *Parser) parseSelectStatement() *ast.SelectStmt {
 	stmt := &ast.SelectStmt{}
 
-	if p.peekTokenIs(lexer.ASTERISK) {
-		p.nextToken()
-		stmt.Columns = []string{"*"} // Use a special value to indicate all columns
-	} else {
-		stmt.Columns = p.parseIdentifierList()
-	}
+	stmt.Columns = p.parseSelectList()
 
 	if !p.expectPeek(lexer.FROM) {
 		return nil
 	}
-	if !p.expectPeek(lexer.IDENT) {
-		return nil	}
-	stmt.Table = p.curToken.Literal
+
+	stmt.From = p.parseFromClause()
 
 	if p.peekTokenIs(lexer.WHERE) {
 		p.nextToken()
@@ -486,29 +499,94 @@ func (p *Parser) parseSelectStatement() *ast.SelectStmt {
 	return stmt
 }
 
-func (p *Parser) parseIdentifierList() []string {
-	list := []string{}
-
-	if p.peekTokenIs(lexer.FROM) {
-		p.errors = append(p.errors, "expected identifier or '*' after SELECT")
+func (p *Parser) parseFromClause() ast.FromClause {
+	if !p.expectPeek(lexer.IDENT) {
 		return nil
+	}
+
+	left := ast.FromClause(&ast.TableIdentifier{Name: p.curToken.Literal})
+
+	for p.peekTokenIs(lexer.JOIN) || p.peekTokenIs(lexer.INNER) || p.peekTokenIs(lexer.LEFT) {
+		joinType := "INNER"
+		p.nextToken() // consume JOIN, INNER, or LEFT
+
+		if p.curToken.Type == lexer.LEFT {
+			joinType = "LEFT"
+			if !p.expectPeek(lexer.JOIN) {
+				return nil
+			}
+		} else if p.curToken.Type == lexer.INNER {
+			if !p.expectPeek(lexer.JOIN) {
+				return nil
+			}
+		}
+
+		jc := &ast.JoinClause{
+			Type: joinType,
+			Left: left,
+		}
+
+		if !p.expectPeek(lexer.IDENT) {
+			return nil
+		}
+		jc.Right = &ast.TableIdentifier{Name: p.curToken.Literal}
+
+		if !p.expectPeek(lexer.ON) {
+			return nil
+		}
+		p.nextToken() // consume ON
+		jc.On = p.parseExpression(LOWEST)
+
+		left = jc
+	}
+
+	return left
+}
+
+func (p *Parser) parseSelectList() []ast.SelectColumn {
+	list := []ast.SelectColumn{}
+
+	if p.peekTokenIs(lexer.ASTERISK) {
+		p.nextToken()
+		list = append(list, ast.SelectColumn{Name: "*"})
+		return list
 	}
 
 	p.nextToken()
-	if p.curToken.Type != lexer.IDENT {
-		p.errors = append(p.errors, "expected identifier in column list")
-		return nil
+
+	// Helper to parse a single select column (e.g., id, users.id, users.*)
+	parseCol := func() ast.SelectColumn {
+		col := ast.SelectColumn{}
+		if p.curToken.Type != lexer.IDENT {
+			p.errors = append(p.errors, "expected identifier in column list")
+			return col
+		}
+
+		// Check for table.* syntax
+		if p.peekTokenIs(lexer.DOT) {
+			tableQualifier := p.curToken.Literal
+			p.nextToken() // consume table name
+			p.nextToken() // consume .
+
+			if p.curTokenIs(lexer.ASTERISK) {
+				return ast.SelectColumn{Name: "*", TableQualifier: tableQualifier}
+			} else if p.curTokenIs(lexer.IDENT) {
+				return ast.SelectColumn{Name: p.curToken.Literal, TableQualifier: tableQualifier}
+			} else {
+				p.errors = append(p.errors, "expected '*' or identifier after 'table.'")
+				return col
+			}
+		} else {
+			return ast.SelectColumn{Name: p.curToken.Literal}
+		}
 	}
-	list = append(list, p.curToken.Literal)
+
+	list = append(list, parseCol())
 
 	for p.peekTokenIs(lexer.COMMA) {
 		p.nextToken()
 		p.nextToken()
-		if p.curToken.Type != lexer.IDENT {
-			p.errors = append(p.errors, "expected identifier in column list")
-			return nil
-		}
-		list = append(list, p.curToken.Literal)
+		list = append(list, parseCol())
 	}
 
 	return list

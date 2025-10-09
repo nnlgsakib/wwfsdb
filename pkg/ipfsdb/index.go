@@ -165,6 +165,11 @@ func UpdateIndexesOnInsert(sh *shell.Shell, table *pb.Table, rowCID string, rowD
 			return nil, fmt.Errorf("failed to convert value to string for index key: %w", err)
 		}
 
+		// Ensure the nodes map is initialized
+		if index.Nodes == nil {
+			index.Nodes = make(map[string]*pb.IndexNode)
+		}
+
 		if _, ok := index.Nodes[key]; !ok {
 			index.Nodes[key] = &pb.IndexNode{}
 		}
@@ -205,6 +210,11 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, rowCID string, rowD
 		key, err := valueToString(val)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert value to string for index key: %w", err)
+		}
+
+		// Ensure the nodes map is not nil before accessing
+		if index.Nodes == nil {
+			continue // Nothing to delete
 		}
 
 		if node, ok := index.Nodes[key]; ok {

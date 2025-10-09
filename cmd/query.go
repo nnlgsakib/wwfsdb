@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
@@ -33,12 +34,11 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 			return
 		}
 
-		selectStmt, ok := stmt.(*ast.SelectStmt)
+		_, ok := stmt.(*ast.SelectStmt)
 		if !ok {
 			fmt.Fprintln(os.Stderr, "Error: invalid SELECT statement")
 			return
 		}
-		tableName := selectStmt.Table
 
 		// --- 2. Execute the query using RPC client --- 
 		c := client.NewClient(viper.GetString("rpc-server"))
@@ -54,45 +54,38 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 			return
 		}
 
-		// --- 3. Get the schema for printing headers --- 
-		var headers []string
-		if len(selectStmt.Columns) == 1 && selectStmt.Columns[0] == "*" {
-			schema, err := c.GetTableSchema(dbName, tableName)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Error getting schema:", err)
-				return
-			}
-			for _, col := range schema.Columns {
-				headers = append(headers, col.Name)
-			}
-		} else {
-			headers = selectStmt.Columns
+		// --- 3. Get headers from the first row's keys --- 
+		if len(rows) == 0 {
+			fmt.Println("(0 rows)")
+			return
 		}
+		
+		var headers []string
+		for key := range rows[0] {
+			headers = append(headers, key)
+		}
+		sort.Strings(headers) // Sort for consistent order
 
 		// --- 4. Print results --- 
 		fmt.Println(strings.Join(headers, "\t| "))
 		fmt.Println(strings.Repeat("----", len(headers)*2))
 
 		// Print rows
-		if len(rows) == 0 {
-			fmt.Println("(0 rows)")
-		} else {
-			for _, row := range rows {
-				var rowValues []string
-				for _, colName := range headers {
-					val, _ := row[colName]
-					// To handle different types, we can marshal to JSON
-					jsonVal, err := json.Marshal(val)
-					if err != nil {
-						rowValues = append(rowValues, fmt.Sprintf("ERR"))
-					} else {
-						rowValues = append(rowValues, string(jsonVal))
-					}
+		for _, row := range rows {
+			var rowValues []string
+			for _, colName := range headers {
+				val, _ := row[colName]
+				// To handle different types, we can marshal to JSON
+				jsonVal, err := json.Marshal(val)
+				if err != nil {
+					rowValues = append(rowValues, fmt.Sprintf("ERR"))
+				} else {
+					rowValues = append(rowValues, string(jsonVal))
 				}
-				fmt.Println(strings.Join(rowValues, "\t| "))
 			}
-			fmt.Printf("\n(%d rows)\n", len(rows))
+			fmt.Println(strings.Join(rowValues, "\t| "))
 		}
+		fmt.Printf("\n(%d rows)\n", len(rows))
 	},
 }
 

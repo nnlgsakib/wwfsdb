@@ -60,65 +60,198 @@ type BooleanLiteral struct {
 	Value bool
 }
 
-// Identifier represents a column name.	
+// Identifier represents a column name, possibly qualified with a table name.
+
+
 
 type Identifier struct {
-	Name string
+
+	Name           string
+
+	TableQualifier string
+
 }
+
+
 
 func (BinaryExpr) isExpression()     {}
+
 func (ComparisonExpr) isExpression() {}
+
 func (LikeExpr) isExpression()       {}
+
 func (InExpr) isExpression()         {}
+
 func (PrefixExpression) isExpression() {}
+
 func (Literal) isExpression()        {}
+
 func (NumberLiteral) isExpression()  {}
+
 func (BooleanLiteral) isExpression() {}
+
 func (Identifier) isExpression()      {}
 
-// Column represents a column in a table
-type Column struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+
+
+// FromClause represents a source of rows for a SELECT statement (a table or a join).
+
+
+
+type FromClause interface {
+
+	isFromClause()
+
 }
+
+
+
+// TableIdentifier represents a single table in a FROM clause.
+
+
+
+type TableIdentifier struct {
+
+	Name string
+
+}
+
+
+
+// JoinClause represents an INNER or LEFT JOIN.
+
+
+
+type JoinClause struct {
+
+	Type  string // "INNER" or "LEFT"
+
+	Left  FromClause
+
+	Right FromClause
+
+	On    Expression
+
+}
+
+
+
+func (TableIdentifier) isFromClause() {}
+
+func (JoinClause) isFromClause()      {}
+
+
+
+// Column represents a column in a table
+
+type Column struct {
+
+	Name string `json:"name"`
+
+	Type string `json:"type"`
+
+}
+
+
 
 // Schema represents the schema of a table
+
+
+
 type Schema struct {
+
 	Columns []Column `json:"columns"`
+
 }
+
+
 
 // UpdateClause represents a SET clause in an UPDATE statement
+
+
+
 type UpdateClause struct {
+
 	Column string
+
 	Value  Expression
+
 }
+
+
 
 // Node is a marker interface for AST nodes
+
+
+
 type Node interface{ isNode() }
 
+
+
 // Statement is a marker interface for SQL statements
+
+
+
 type Statement interface {
+
 	Node
+
 	isStatement()
+
 }
 
+
+
+// SelectColumn represents a single column in a SELECT clause.
+
+
+
+type SelectColumn struct {
+
+	Name           string
+
+	TableQualifier string
+
+}
+
+
+
 // Basic statement node wrappers (placeholders for future rich AST)
+
+
+
 type (
+
 	CreateDatabaseStmt struct{ Name string }
+
 	CreateTableStmt    struct{ Name string; Schema Schema }
+
 	DropTableStmt      struct{ Name string }
+
 	SelectStmt         struct {
-		Table   string
-		Columns []string // New field for selected columns
+
+		Columns []SelectColumn // New field for selected columns
+
+		From    FromClause
+
 		Where   Expression
+
 	}
+
 	InsertStmt struct{ Table string; Values []Expression }
+
 	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
+
 	DeleteStmt struct{ Table string; Where Expression }
+
 	CreateIndexStmt struct{ Table string; Column string }
+
 	BeginStmt    struct{}
+
 	CommitStmt   struct{}
+
 	RollbackStmt struct{}
+
 )
 
 func (CreateDatabaseStmt) isNode() {}

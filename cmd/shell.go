@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
@@ -91,7 +92,7 @@ Example:
 			}
 
 			// Handle different statement types
-			switch s := stmt.(type) {
+			switch stmt.(type) {
 			case *ast.SelectStmt:
 				var rows []map[string]interface{}
 				if err := json.Unmarshal([]byte(result.Result), &rows); err != nil {
@@ -99,42 +100,37 @@ Example:
 					continue
 				}
 
-				var headers []string
-				if len(s.Columns) == 1 && s.Columns[0] == "*" {
-					schema, err := c.GetTableSchema(dbName, s.Table)
-					if err != nil {
-						fmt.Fprintln(os.Stderr, "Error getting schema:", err)
-						continue
-					}
-					for _, col := range schema.Columns {
-						headers = append(headers, col.Name)
-					}
-				} else {
-					headers = s.Columns
+				if len(rows) == 0 {
+					fmt.Println("(0 rows)")
+					continue
 				}
+
+				// Dynamically get headers from the first row's keys
+				var headers []string
+				for key := range rows[0] {
+					headers = append(headers, key)
+				}
+				sort.Strings(headers) // Sort for consistent order
 
 				// Print results
 				fmt.Println(strings.Join(headers, "\t| "))
 				fmt.Println(strings.Repeat("----", len(headers)*2))
 
-				if len(rows) == 0 {
-					fmt.Println("(0 rows)")
-				} else {
-					for _, row := range rows {
-						var rowValues []string
-						for _, colName := range headers {
-							val, _ := row[colName]
-							jsonVal, err := json.Marshal(val)
-							if err != nil {
-								rowValues = append(rowValues, fmt.Sprintf("ERR"))
-							} else {
-								rowValues = append(rowValues, string(jsonVal))
-							}
+				for _, row := range rows {
+					var rowValues []string
+					for _, colName := range headers {
+						val, _ := row[colName]
+						jsonVal, err := json.Marshal(val)
+						if err != nil {
+							rowValues = append(rowValues, fmt.Sprintf("ERR"))
+						} else {
+							rowValues = append(rowValues, string(jsonVal))
 						}
-						fmt.Println(strings.Join(rowValues, "\t| "))
 					}
-					fmt.Printf("\n(%d rows)\n", len(rows))
+					fmt.Println(strings.Join(rowValues, "\t| "))
 				}
+				fmt.Printf("\n(%d rows)\n", len(rows))
+
 			default:
 				fmt.Println(result.Result)
 			}

@@ -225,20 +225,19 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 	}
 
 	// 6. Find and update rows
-	var updatedCount int
-	for i, rowCID := range table.Rows {
-		row, err := LoadRow(sh, rowCID)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		include, err := evaluateExpression(row, where)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		if include {
-			// Capture old state for index update
+			var updatedCount int
+			for i, rowCID := range table.Rows {
+				row, err := LoadRow(sh, rowCID)
+				if err != nil {
+					return nil, 0, err
+				}
+	
+				include, err := evaluateExpression(CombinedRow{tableName: row}, where)
+				if err != nil {
+					return nil, 0, err
+				}
+	
+				if include {			// Capture old state for index update
 			oldRow := proto.Clone(row).(*pb.Row)
 
 			// First, update indexes as if the old row is being deleted
@@ -342,7 +341,7 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, where ast.Expr
 			return nil, 0, err
 		}
 
-		include, err := evaluateExpression(row, where)
+		include, err := evaluateExpression(CombinedRow{tableName: row}, where)
 		if err != nil {
 			return nil, 0, err
 		}

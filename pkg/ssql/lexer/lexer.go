@@ -34,6 +34,7 @@ const (
 	LPAREN    = "("
 	RPAREN    = ")"
 	ASTERISK  = "*"
+	DOT       = "."
 
 	// Keywords
 	CREATE   = "CREATE"
@@ -60,6 +61,9 @@ const (
 	BEGIN    = "BEGIN"
 	COMMIT   = "COMMIT"
 	ROLLBACK = "ROLLBACK"
+	JOIN     = "JOIN"
+	INNER    = "INNER"
+	LEFT     = "LEFT"
 )
 
 var keywords = map[string]TokenType{
@@ -87,6 +91,9 @@ var keywords = map[string]TokenType{
 	"BEGIN":    BEGIN,
 	"COMMIT":   COMMIT,
 	"ROLLBACK": ROLLBACK,
+	"JOIN":     JOIN,
+	"INNER":    INNER,
+	"LEFT":     LEFT,
 }
 
 func LookupIdent(ident string) TokenType {
@@ -162,6 +169,8 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(COMMA, l.ch)
 	case '*':
 		tok = newToken(ASTERISK, l.ch)
+	case '.':
+		tok = newToken(DOT, l.ch)
 	case '-':
 		tok = newToken(MINUS, l.ch)
 	case '\'':

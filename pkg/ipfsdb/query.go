@@ -11,8 +11,11 @@ import (
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 )
 
+// CombinedRow represents a row resulting from a join, mapping table names to their respective row data.
+type CombinedRow map[string]*pb.Row
+
 // Query retrieves rows from a table
-func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expression) ([]map[string]interface{}, error) {
+func Query(ipfsAPI, dbName string, columns []ast.SelectColumn, from ast.FromClause, where ast.Expression) ([]map[string]interface{}, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -21,109 +24,216 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 		return nil, err
 	}
 
-	return QueryDB(sh, db, tableName, columns, where)
+	return QueryDB(sh, db, columns, from, where)
 }
 
 // QueryDB retrieves rows from an in-memory database object
-func QueryDB(sh *shell.Shell, db *pb.Database, tableName string, columns []string, where ast.Expression) ([]map[string]interface{}, error) {
-	// 2. Get the table CID from the database
-	tableCID, ok := db.Tables[tableName]
-	if !ok {
-		return nil, fmt.Errorf("table %s not found in database", tableName)
-	}
-
-	// 3. Load the table
-	table, err := LoadTable(sh, tableCID)
+func QueryDB(sh *shell.Shell, db *pb.Database, columns []ast.SelectColumn, from ast.FromClause, where ast.Expression) ([]map[string]interface{}, error) {
+	// 1. Execute the FROM clause (including any JOINs) to get a set of combined rows.
+	combinedRows, err := executeFromClause(sh, db, from)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error executing FROM/JOIN clause: %w", err)
 	}
 
-	// 4. Find candidate rows (either from index or full scan)
-	rowCIDs, err := findCandidateRows(sh, table, where)
-	if err != nil {
-		return nil, err
-	}
-
-	// 5. Load the schema
-	schema, err := LoadSchema(sh, table.SchemaCid)
-	if err != nil {
-		return nil, err
-	}
-
-	// 6. Iterate over the candidate rows and filter based on the WHERE clause
-	results := make([]map[string]interface{}, 0)
-	for _, rowCID := range rowCIDs {
-		row, err := LoadRow(sh, rowCID)
-		if err != nil {
-			return nil, err
-		}
-
+	// 2. Filter the combined rows using the WHERE clause.
+	filteredRows := make([]CombinedRow, 0)
+	for _, row := range combinedRows {
 		include, err := evaluateExpression(row, where)
 		if err != nil {
 			return nil, err
 		}
-
 		if include {
-			// Filter columns
-			resultRow := make(map[string]interface{})
-			if len(columns) == 1 && columns[0] == "*" {
-				for _, col := range schema.Columns {
-					val, err := FromAny(row.Values[col.Name])
-					if err != nil {
-						return nil, err
-					}
-					resultRow[col.Name] = val
-				}
-			} else {
-				for _, colName := range columns {
-					val, err := FromAny(row.Values[colName])
-					if err != nil {
-						return nil, err
-					}
-					resultRow[colName] = val
-				}
-			}
-			results = append(results, resultRow)
+			filteredRows = append(filteredRows, row)
 		}
+	}
+
+	// 3. Project the final columns for the result set.
+	results, err := projectColumns(sh, db, from, filteredRows, columns)
+	if err != nil {
+		return nil, fmt.Errorf("error projecting columns: %w", err)
 	}
 
 	return results, nil
 }
 
-// findCandidateRows tries to use an index to narrow down the list of rows to scan.
-// If it can't use an index, it returns all row CIDs for a full table scan.
-func findCandidateRows(sh *shell.Shell, table *pb.Table, where ast.Expression) ([]string, error) {
-	// Check if we can use an index. For now, we only support simple `col = val` queries.
-	if comp, ok := where.(*ast.ComparisonExpr); ok && comp.Operator == "=" {
-		if ident, ok := comp.Left.(*ast.Identifier); ok {
-			if indexCID, ok := table.Indexes[ident.Name]; ok {
-				// Index exists for this column. Let's try to use it.
-				if lit, ok := comp.Right.(*ast.Literal); ok {
-					// Load the index
-					index, err := LoadIndex(sh, indexCID)
-					if err != nil {
-						return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
-					}
+// executeFromClause is the core of the JOIN implementation. It recursively processes the FromClause.
+func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([]CombinedRow, error) {
+	switch f := from.(type) {
+	case *ast.TableIdentifier:
+		// Base case: load all rows from a single table.
+		tableCID, ok := db.Tables[f.Name]
+		if !ok {
+			return nil, fmt.Errorf("table %s not found in database", f.Name)
+		}
+		table, err := LoadTable(sh, tableCID)
+		if err != nil {
+			return nil, err
+		}
 
-					// The key needs to be validated and cast just like during insertion
-					// For now, we'll just use the literal string value. This is a simplification
-					// and might not work for all types without proper casting.
-					key := lit.Value
-					if node, ok := index.Nodes[key]; ok {
-						return node.Cids, nil // Found candidate rows from index!
-					} else {
-						return []string{}, nil // Value not in index, so no results
-					}
+		var results []CombinedRow
+		for _, rowCID := range table.Rows {
+			row, err := LoadRow(sh, rowCID)
+			if err != nil {
+				// It's better to log this error than to fail the whole query
+				fmt.Printf("Warning: failed to load row %s: %v\n", rowCID, err)
+				continue
+			}
+			results = append(results, CombinedRow{f.Name: row})
+		}
+		return results, nil
+
+	case *ast.JoinClause:
+		// Recursive step: perform a join.
+		leftRows, err := executeFromClause(sh, db, f.Left)
+		if err != nil {
+			return nil, err
+		}
+		rightRows, err := executeFromClause(sh, db, f.Right)
+		if err != nil {
+			return nil, err
+		}
+
+		var joinedRows []CombinedRow
+		leftMatched := make(map[int]bool) // Keep track of matched left rows for LEFT JOIN
+
+		// Nested loop join algorithm.
+		for i, lRow := range leftRows {
+			matchFound := false
+			for _, rRow := range rightRows {
+				// Create a temporary merged row for evaluating the ON condition.
+				tempRow := make(CombinedRow)
+				for k, v := range lRow {
+					tempRow[k] = v
+				}
+				for k, v := range rRow {
+					tempRow[k] = v
+				}
+
+				// Evaluate the ON condition.
+				match, err := evaluateExpression(tempRow, f.On)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating ON condition: %w", err)
+				}
+
+				if match {
+					matchFound = true
+					leftMatched[i] = true
+					joinedRows = append(joinedRows, tempRow)
 				}
 			}
+			// For LEFT JOIN, if no match was found for the left row, add it with nulls for the right side.
+			if !matchFound && f.Type == "LEFT" {
+				// Create a row with nil values for the right table(s).
+				tempRow := make(CombinedRow)
+				for k, v := range lRow {
+					tempRow[k] = v
+				}
+				// Get the tables from the right side of the join to add nil placeholders.
+				rightTableNames := getTableNamesFromClause(f.Right)
+				for _, name := range rightTableNames {
+					tempRow[name] = nil // Represent a row of nulls
+				}
+				joinedRows = append(joinedRows, tempRow)
+			}
 		}
-	}
 
-	// If we reach here, we couldn't use an index, so return all rows for a full scan.
-	return table.Rows, nil
+		return joinedRows, nil
+	}
+	return nil, fmt.Errorf("unsupported FROM clause type: %T", from)
 }
 
-func evaluateExpression(row *pb.Row, expr ast.Expression) (bool, error) {
+// projectColumns creates the final result set based on the selected columns.
+func projectColumns(sh *shell.Shell, db *pb.Database, from ast.FromClause, rows []CombinedRow, columns []ast.SelectColumn) ([]map[string]interface{}, error) {
+	results := make([]map[string]interface{}, 0, len(rows))
+
+	// Pre-calculate all table schemas involved in the query.
+	tableNames := getTableNamesFromClause(from)
+	schemas := make(map[string]*pb.Schema)
+	for _, name := range tableNames {
+		tableCID, ok := db.Tables[name]
+		if !ok {
+			return nil, fmt.Errorf("table %s not found", name)
+		}
+		table, err := LoadTable(sh, tableCID)
+		if err != nil {
+			return nil, err
+		}
+		schema, err := LoadSchema(sh, table.SchemaCid)
+		if err != nil {
+			return nil, err
+		}
+		schemas[name] = schema
+	}
+
+	for _, combinedRow := range rows {
+		resultRow := make(map[string]interface{})
+		for _, col := range columns {
+			// Handle SELECT *
+			if col.Name == "*" && col.TableQualifier == "" {
+				for tableName, rowData := range combinedRow {
+					if rowData == nil { // Handle case for LEFT JOIN with no match
+						for _, schemaCol := range schemas[tableName].Columns {
+							resultRow[tableName+"."+schemaCol.Name] = nil
+						}
+						continue
+					}
+					for colName, valAny := range rowData.Values {
+						val, _ := FromAny(valAny)
+						resultRow[tableName+"."+colName] = val
+					}
+				}
+				continue
+			}
+
+			// Handle SELECT table.*
+			if col.Name == "*" {
+				tableName := col.TableQualifier
+				rowData, ok := combinedRow[tableName]
+				if !ok {
+					return nil, fmt.Errorf("table %s not found in query", tableName)
+				}
+				if rowData == nil { // Handle case for LEFT JOIN with no match
+					for _, schemaCol := range schemas[tableName].Columns {
+						resultRow[tableName+"."+schemaCol.Name] = nil
+					}
+					continue
+				}
+				for colName, valAny := range rowData.Values {
+					val, _ := FromAny(valAny)
+					resultRow[tableName+"."+colName] = val
+				}
+				continue
+			}
+
+			// Handle specific column (e.g., users.id or just id)
+			val, err := evaluateIdentifier(combinedRow, &ast.Identifier{Name: col.Name, TableQualifier: col.TableQualifier})
+			if err != nil {
+				return nil, err
+			}
+			// Determine the final column name in the result set.
+			finalColName := col.Name
+			if col.TableQualifier != "" {
+				finalColName = col.TableQualifier + "." + col.Name
+			}
+			resultRow[finalColName] = val
+		}
+		results = append(results, resultRow)
+	}
+	return results, nil
+}
+
+// getTableNamesFromClause recursively finds all table names involved in a FromClause.
+func getTableNamesFromClause(from ast.FromClause) []string {
+	switch f := from.(type) {
+	case *ast.TableIdentifier:
+		return []string{f.Name}
+	case *ast.JoinClause:
+		return append(getTableNamesFromClause(f.Left), getTableNamesFromClause(f.Right)...)
+	}
+	return nil
+}
+
+func evaluateExpression(row CombinedRow, expr ast.Expression) (bool, error) {
 	if expr == nil {
 		return true, nil
 	}
@@ -156,6 +266,18 @@ func evaluateExpression(row *pb.Row, expr ast.Expression) (bool, error) {
 		right, err := evaluateExpressionValue(row, e.Right)
 		if err != nil {
 			return false, err
+		}
+
+		// Handle nil for LEFT JOIN cases
+		if left == nil || right == nil {
+			switch e.Operator {
+			case "=":
+				return left == right, nil
+			case "!=":
+				return left != right, nil
+			default:
+				return false, nil // Other comparisons with NULL are false
+			}
 		}
 
 		// Try numeric comparison first
@@ -276,14 +398,10 @@ func getNumericValue(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-func evaluateExpressionValue(row *pb.Row, expr ast.Expression) (interface{}, error) {
+func evaluateExpressionValue(row CombinedRow, expr ast.Expression) (interface{}, error) {
 	switch e := expr.(type) {
 	case *ast.Identifier:
-		anyVal, ok := row.Values[e.Name]
-		if !ok {
-			return nil, fmt.Errorf("column %s not found in row", e.Name)
-		}
-		return FromAny(anyVal)
+		return evaluateIdentifier(row, e)
 	case *ast.Literal:
 		return e.Value, nil
 	case *ast.NumberLiteral:
@@ -305,4 +423,49 @@ func evaluateExpressionValue(row *pb.Row, expr ast.Expression) (interface{}, err
 	default:
 		return nil, fmt.Errorf("unsupported expression value type: %T", e)
 	}
+}
+
+// evaluateIdentifier resolves an identifier (e.g., `users.id` or `id`) against a combined row.
+func evaluateIdentifier(row CombinedRow, ident *ast.Identifier) (interface{}, error) {
+	// Case 1: Identifier is fully qualified (e.g., users.id)
+	if ident.TableQualifier != "" {
+		tableData, ok := row[ident.TableQualifier]
+		if !ok {
+			return nil, fmt.Errorf("table %s not found in FROM clause", ident.TableQualifier)
+		}
+		if tableData == nil { // This happens in a LEFT JOIN where there was no match
+			return nil, nil
+		}
+		valAny, ok := tableData.Values[ident.Name]
+		if !ok {
+			return nil, fmt.Errorf("column %s not found in table %s", ident.Name, ident.TableQualifier)
+		}
+		return FromAny(valAny)
+	}
+
+	// Case 2: Identifier is unqualified (e.g., id). We need to find which table it belongs to.
+	var foundValue interface{}
+	var foundInTable string
+	for tableName, tableData := range row {
+		if tableData == nil {
+			continue
+		}
+		if valAny, ok := tableData.Values[ident.Name]; ok {
+			if foundInTable != "" {
+				return nil, fmt.Errorf("ambiguous column name: %s exists in multiple tables", ident.Name)
+			}
+			foundInTable = tableName
+			val, err := FromAny(valAny)
+			if err != nil {
+				return nil, err
+			}
+			foundValue = val
+		}
+	}
+
+	if foundInTable == "" {
+		return nil, fmt.Errorf("column %s not found in any table", ident.Name)
+	}
+
+	return foundValue, nil
 }

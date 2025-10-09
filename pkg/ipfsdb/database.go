@@ -237,8 +237,7 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.State
 		}
 		return newDb, fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
 	case *ast.SelectStmt:
-	
-rows, err := QueryDB(sh, db, s.Table, s.Columns, s.Where)
+		rows, err := QueryDB(sh, db, s.Columns, s.From, s.Where)
 		if err != nil {
 			return nil, "", err
 		}
