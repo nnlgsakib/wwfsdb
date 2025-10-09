@@ -147,7 +147,7 @@ This stage focuses on implementing the advanced SQL features and performance opt
 
 - [ ] **3. Develop a Query Optimizer:**
   - **Problem:** The database currently executes queries exactly as written, which can be highly inefficient.
-  - **Solution:** Introduce a basic query optimizer that analyzes a query's AST and available indexes to create a more efficient execution plan. For example, it could reorder `WHERE` clause evaluations or choose the best index to use for a `JOIN` operation.
+  - **Solution:** Introduce a advanced query optimizer that analyzes a query's AST and available indexes to create a more efficient execution plan. For example, it could reorder `WHERE` clause evaluations or choose the best index to use for a `JOIN` operation.
   - **Impact:** Drastically improves performance for complex queries without requiring the user to write perfectly optimized SQL.
 
 - [ ] **4. Add Support for Subqueries:**
