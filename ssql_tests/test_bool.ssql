@@ -1,0 +1,5 @@
+CREATE TABLE products (
+    id INT,
+    name STRING,
+    is_active BOOLEAN
+);

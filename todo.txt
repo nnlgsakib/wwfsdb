@@ -78,7 +78,7 @@ This stage is focused on internal improvements that make the project faster, mor
   - **Problem:** Configuration is handled by CLI flags and hardcoded paths.
   - **Solution:** Use a library like `Viper` to support configuration from a file, environment variables, and CLI flags for more flexible deployment.
 
-- [ ] **6. Fix Parser Limitation for INSERT Statements:**
+- [✅] **6. Fix Parser Limitation for INSERT Statements:**
   - **Problem:** The SQL parser currently only accepts string literals in the `VALUES` clause of an `INSERT` statement, forcing users to quote all values, which is incorrect for non-string types.
   - **Solution:** Extend the parser to support multiple literal types (e.g., numbers, booleans) in the `VALUES` clause, consistent with the defined schema types.
 

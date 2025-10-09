@@ -497,14 +497,6 @@ func (p *Parser) parseInsertStatement() *ast.InsertStmt {
 
 	stmt.Values = p.parseExpressionList(lexer.RPAREN)
 
-	// The old parser didn't require a closing paren, but a proper parser should.
-	// Let's assume it's required.
-	if !p.curTokenIs(lexer.RPAREN) {
-		if !p.expectPeek(lexer.RPAREN) {
-			return nil
-		}
-	}
-
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
 	}
@@ -512,8 +504,8 @@ func (p *Parser) parseInsertStatement() *ast.InsertStmt {
 	return stmt
 }
 
-func (p *Parser) parseExpressionList(end lexer.TokenType) []string {
-	list := []string{}
+func (p *Parser) parseExpressionList(end lexer.TokenType) []ast.Expression {
+	list := []ast.Expression{}
 
 	if p.peekTokenIs(end) {
 		p.nextToken()
@@ -521,20 +513,16 @@ func (p *Parser) parseExpressionList(end lexer.TokenType) []string {
 	}
 
 	p.nextToken()
-	if p.curToken.Type != lexer.STRING {
-		p.errors = append(p.errors, "expected string literal in values list")
-		return nil
-	}
-	list = append(list, p.curToken.Literal)
+	list = append(list, p.parseExpression(LOWEST))
 
 	for p.peekTokenIs(lexer.COMMA) {
 		p.nextToken()
 		p.nextToken()
-		if p.curToken.Type != lexer.STRING {
-			p.errors = append(p.errors, "expected string literal in values list")
-			return nil
-		}
-		list = append(list, p.curToken.Literal)
+		list = append(list, p.parseExpression(LOWEST))
+	}
+
+	if !p.expectPeek(end) {
+		return nil
 	}
 
 	return list

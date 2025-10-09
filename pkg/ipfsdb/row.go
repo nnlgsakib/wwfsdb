@@ -3,6 +3,7 @@ package ipfsdb
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
@@ -12,7 +13,7 @@ import (
 )
 
 // Insert adds a new row to a table
-func Insert(ipfsAPI, dbName, tableName string, values []string) error {
+func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -45,8 +46,22 @@ func Insert(ipfsAPI, dbName, tableName string, values []string) error {
 	}
 
 	for i, col := range schema.Columns {
+		expr := values[i]
+		var valueStr string
+
+		switch v := expr.(type) {
+		case *ast.Literal:
+			valueStr = v.Value
+		case *ast.NumberLiteral:
+			valueStr = strconv.FormatFloat(v.Value, 'f', -1, 64)
+		case *ast.BooleanLiteral:
+			valueStr = strconv.FormatBool(v.Value)
+		default:
+			return fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
+		}
+
 		// Validate and cast the value based on the column type
-		val, err := ValidateAndCastValue(values[i], col.Type)
+		val, err := ValidateAndCastValue(valueStr, col.Type)
 		if err != nil {
 			return fmt.Errorf("validation error for column '%s': %w", col.Name, err)
 		}

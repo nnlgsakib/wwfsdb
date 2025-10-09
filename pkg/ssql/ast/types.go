@@ -105,7 +105,7 @@ type (
 		Columns []string // New field for selected columns
 		Where   Expression
 	}
-	InsertStmt struct{ Table string; Values []string }
+	InsertStmt struct{ Table string; Values []Expression }
 	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
 	DeleteStmt struct{ Table string; Where Expression }
 	CreateIndexStmt struct{ Table string; Column string }
