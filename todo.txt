@@ -92,6 +92,6 @@ This stage is focused on internal improvements that make the project faster, mor
 
 This final stage focuses on making the project accessible, understandable, and easy to contribute to.
 
-- [ ] **1. Write a Comprehensive `README.md`:** Cover project vision, architecture, installation, detailed usage examples, and the development roadmap.
+- [✅] **1. Write a Comprehensive `README.md`:** Cover project vision, architecture, installation, detailed usage examples, and the development roadmap.
 - [ ] **2. Improve CLI Command Help Text:** Write detailed `Long` descriptions for each command with clear syntax examples.
 - [ ] **3. Add In-Code Documentation:** Add comments to clarify complex functions, data structures, and design decisions, especially in the IPFS interaction logic.
