@@ -10,6 +10,7 @@ import (
 	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // queryCmd represents the query command
@@ -40,7 +41,7 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		tableName := selectStmt.Table
 
 		// --- 2. Execute the query using RPC client --- 
-		c := client.NewClient(rpcServerAddr)
+		c := client.NewClient(viper.GetString("rpc-server"))
 		resultString, err := c.ExecuteQuery(dbName, queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)

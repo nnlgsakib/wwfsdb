@@ -9,6 +9,7 @@ import (
 
     "github.com/nnlgsakib/wwfsdb/pkg/client"
     "github.com/spf13/cobra"
+    "github.com/spf13/viper"
 )
 
 // migrateCmd represents the migrate command
@@ -30,7 +31,7 @@ var migrateCmd = &cobra.Command{
 			return
 		}
 
-		c := client.NewClient(rpcServerAddr)
+		c := client.NewClient(viper.GetString("rpc-server"))
 		result, err := c.ExecuteQuery(dbName, string(content))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)

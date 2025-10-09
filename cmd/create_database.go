@@ -6,6 +6,7 @@ import (
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // createDatabaseCmd represents the createdatabase command
@@ -17,7 +18,7 @@ var createDatabaseCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		queryString := args[0]
 
-		c := client.NewClient(rpcServerAddr)
+		c := client.NewClient(viper.GetString("rpc-server"))
 		result, err := c.ExecuteQuery("", queryString) // dbName is not needed here
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)

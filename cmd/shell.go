@@ -12,6 +12,7 @@ import (
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql"
 	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var shellCmd = &cobra.Command{
@@ -23,7 +24,7 @@ Example:
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		dbName := args[0]
-		c := client.NewClient(rpcServerAddr)
+		c := client.NewClient(viper.GetString("rpc-server"))
 
 		fmt.Printf("Connected to database '%s'. Type 'exit' or 'quit' to leave.\n", dbName)
 

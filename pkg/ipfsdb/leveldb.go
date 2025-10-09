@@ -8,9 +8,9 @@ import (
 
 var db *leveldb.DB
 
-func InitCache() error {
+func InitCache(path string) error {
 	var err error
-	db, err = leveldb.OpenFile("wwfsdb_cache", nil)
+	db, err = leveldb.OpenFile(path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to open leveldb: %w", err)
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // executeCmd represents the execute command
@@ -20,7 +21,7 @@ var executeCmd = &cobra.Command{
 
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
-		c := client.NewClient(rpcServerAddr)
+		c := client.NewClient(viper.GetString("rpc-server"))
 		result, err := c.ExecuteQuery(dbName, queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
