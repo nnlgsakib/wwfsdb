@@ -22,7 +22,7 @@ var executeCmd = &cobra.Command{
 		fmt.Printf("Executing on database '%s': \"%s\"\n", dbName, queryString)
 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery(dbName, queryString)
+		result, err := c.ExecuteQuery(dbName, queryString, "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

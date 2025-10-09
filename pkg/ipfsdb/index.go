@@ -33,29 +33,55 @@ func LoadIndex(sh *shell.Shell, indexCID string) (*pb.Index, error) {
 func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 	sh := shell.NewShell(ipfsAPI)
 
-	// 1. Load the database and table
+	// 1. Load the database
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
 		return err
 	}
-	tableCID, ok := db.Tables[tableName]
+
+	newDb, err := CreateIndexDB(sh, db, tableName, columnName)
+	if err != nil {
+		return err
+	}
+
+	// 8. Update the database with the new table CID
+	newDbCID, err := AddObject(sh, newDb)
+	if err != nil {
+		return err
+	}
+
+	// 9. Update cache and publish
+	UpdateCache(dbName, newDbCID)
+	PublishAsync(sh, dbName, newDbCID)
+
+	return nil
+}
+
+// CreateIndexDB builds and saves a new index for a specific column in a table.
+// It operates on an in-memory database object and returns the modified object.
+func CreateIndexDB(sh *shell.Shell, db *pb.Database, tableName, columnName string) (*pb.Database, error) {
+	// Make a deep copy of the database to avoid modifying the original in-place
+	// This is crucial for transactional integrity.
+	newDb := proto.Clone(db).(*pb.Database)
+
+	tableCID, ok := newDb.Tables[tableName]
 	if !ok {
-		return fmt.Errorf("table %s not found", tableName)
+		return nil, fmt.Errorf("table %s not found", tableName)
 	}
 	table, err := LoadTable(sh, tableCID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// 2. Check if index already exists
+	// Check if index already exists
 	if _, ok := table.Indexes[columnName]; ok {
-		return fmt.Errorf("index for column %s on table %s already exists", columnName, tableName)
+		return nil, fmt.Errorf("index for column %s on table %s already exists", columnName, tableName)
 	}
 
-	// 3. Load schema and validate column
+	// Load schema and validate column
 	schema, err := LoadSchema(sh, table.SchemaCid)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	columnExists := false
 	for _, col := range schema.Columns {
@@ -65,26 +91,24 @@ func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 		}
 	}
 	if !columnExists {
-		return fmt.Errorf("column %s not found in table %s", columnName, tableName)
+		return nil, fmt.Errorf("column %s not found in table %s", columnName, tableName)
 	}
 
-	// 4. Build the index from existing rows
+	// Build the index from existing rows
 	newIndex := &pb.Index{Nodes: make(map[string]*pb.IndexNode)}
 	for _, rowCID := range table.Rows {
 		row, err := LoadRow(sh, rowCID)
 		if err != nil {
-			return fmt.Errorf("failed to load row %s: %w", rowCID, err)
+			return nil, fmt.Errorf("failed to load row %s: %w", rowCID, err)
 		}
 		val, ok := row.Values[columnName]
 		if !ok {
-			// Column value doesn't exist for this row, skip it
-			continue
+			continue // This row doesn't have a value for the indexed column
 		}
 
-		// Keys in a JSON map must be strings. We format the value to a string to use as a key.
 		key, err := valueToString(val)
 		if err != nil {
-			return fmt.Errorf("failed to convert value to string for index key: %w", err)
+			return nil, fmt.Errorf("failed to convert value to string for index key: %w", err)
 		}
 
 		if _, ok := newIndex.Nodes[key]; !ok {
@@ -93,36 +117,28 @@ func CreateIndex(ipfsAPI, dbName, tableName, columnName string) error {
 		newIndex.Nodes[key].Cids = append(newIndex.Nodes[key].Cids, rowCID)
 	}
 
-	// 5. Save the new index to IPFS
+	// Save the new index to IPFS (this is still needed here as index is a separate object)
 	indexCID, err := AddObject(sh, newIndex)
 	if err != nil {
-		return fmt.Errorf("failed to save index to IPFS: %w", err)
+		return nil, fmt.Errorf("failed to save index to IPFS: %w", err)
 	}
 
-	// 6. Update the table metadata with the new index CID
+	// Update the table metadata with the new index CID
 	if table.Indexes == nil {
 		table.Indexes = make(map[string]string)
 	}
 	table.Indexes[columnName] = indexCID
 
-	// 7. Save the updated table back to IPFS
+	// Save the updated table back to IPFS (this is still needed here as table is a separate object)
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// 8. Update the database with the new table CID
-	db.Tables[tableName] = newTableCID
-	newDbCID, err := AddObject(sh, db)
-	if err != nil {
-		return err
-	}
+	// Update the database with the new table CID
+	newDb.Tables[tableName] = newTableCID
 
-	// 9. Update cache and publish
-	UpdateCache(dbName, newDbCID)
-	publishAsync(sh, dbName, newDbCID)
-
-	return nil
+	return newDb, nil // Return the modified DB object
 }
 
 // UpdateIndexesOnInsert updates all relevant indexes when a new row is added.

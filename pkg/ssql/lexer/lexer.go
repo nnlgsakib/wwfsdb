@@ -56,6 +56,9 @@ const (
 	ON       = "ON"
 	TRUE     = "TRUE"
 	FALSE    = "FALSE"
+	BEGIN    = "BEGIN"
+	COMMIT   = "COMMIT"
+	ROLLBACK = "ROLLBACK"
 )
 
 var keywords = map[string]TokenType{
@@ -80,6 +83,9 @@ var keywords = map[string]TokenType{
 	"ON":       ON,
 	"TRUE":     TRUE,
 	"FALSE":    FALSE,
+	"BEGIN":    BEGIN,
+	"COMMIT":   COMMIT,
+	"ROLLBACK": ROLLBACK,
 }
 
 func LookupIdent(ident string) TokenType {

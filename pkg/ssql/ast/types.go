@@ -109,6 +109,9 @@ type (
 	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
 	DeleteStmt struct{ Table string; Where Expression }
 	CreateIndexStmt struct{ Table string; Column string }
+	BeginStmt    struct{}
+	CommitStmt   struct{}
+	RollbackStmt struct{}
 )
 
 func (CreateDatabaseStmt) isNode() {}
@@ -127,5 +130,11 @@ func (DeleteStmt) isNode()        {}
 func (DeleteStmt) isStatement()     {}
 func (CreateIndexStmt) isNode() {}
 func (CreateIndexStmt) isStatement() {}
+func (BeginStmt) isNode()    {}
+func (BeginStmt) isStatement() {}
+func (CommitStmt) isNode()    {}
+func (CommitStmt) isStatement() {}
+func (RollbackStmt) isNode()    {}
+func (RollbackStmt) isStatement() {}
 
 

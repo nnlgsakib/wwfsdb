@@ -19,7 +19,7 @@ var createDatabaseCmd = &cobra.Command{
 		queryString := args[0]
 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery("", queryString) // dbName is not needed here
+		result, err := c.ExecuteQuery("", queryString, "") // dbName is not needed here
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

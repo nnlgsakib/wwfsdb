@@ -234,10 +234,41 @@ func (p *Parser) ParseStatement() ast.Statement {
 		return p.parseUpdateStatement()
 	case lexer.DELETE:
 		return p.parseDeleteStatement()
+	case lexer.BEGIN:
+		return p.parseBeginStatement()
+	case lexer.COMMIT:
+		return p.parseCommitStatement()
+	case lexer.ROLLBACK:
+		return p.parseRollbackStatement()
 	default:
 		return nil
 	}
 }
+
+func (p *Parser) parseBeginStatement() *ast.BeginStmt {
+	stmt := &ast.BeginStmt{}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+	return stmt
+}
+
+func (p *Parser) parseCommitStatement() *ast.CommitStmt {
+	stmt := &ast.CommitStmt{}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+	return stmt
+}
+
+func (p *Parser) parseRollbackStatement() *ast.RollbackStmt {
+	stmt := &ast.RollbackStmt{}
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+	return stmt
+}
+
 
 func (p *Parser) parseCreateStatement() ast.Statement {
 	p.nextToken() // consume CREATE

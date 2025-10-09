@@ -126,8 +126,11 @@ func AddObject(sh *shell.Shell, obj proto.Message) (string, error) {
 	return sh.Add(bytes.NewReader(data))
 }
 
-// ExecuteQuery parses and executes a query
+// ExecuteQuery is the top-level function for single, auto-committed queries.
+// It loads the database, executes the statement, and saves the result.
 func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
+	sh := shell.NewShell(ipfsAPI)
+
 	// Use the new parser
 	stmt, err := ssql.Parse(query)
 	if err != nil {
@@ -151,71 +154,102 @@ func ExecuteQuery(ipfsAPI, dbName, query string) (string, error) {
 		return "", err // Return original error if multi-parse also fails
 	}
 
-	switch s := stmt.(type) {
-	case *ast.CreateDatabaseStmt:
+	// Handle CREATE DATABASE separately as it doesn't operate on an existing DB
+	if s, ok := stmt.(*ast.CreateDatabaseStmt); ok {
 		_, err := CreateDatabase(ipfsAPI, s.Name)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Database '%s' created successfully.", s.Name), nil
-	case *ast.CreateTableStmt:
-		_, err := Migrate(ipfsAPI, dbName, s.Name, &s.Schema)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Table '%s' created successfully in database '%s'.", s.Name, dbName), nil
-	case *ast.DropTableStmt:
-		err := Drop(ipfsAPI, dbName, s.Name)
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
-	case *ast.SelectStmt:
-	
-rows, err := Query(ipfsAPI, dbName, s.Table, s.Columns, s.Where)
-		if err != nil {
-			return "", err
-		}
+	}
 
-		// Use json.Marshal to correctly handle types
+	// Load the database
+	db, err := LoadDatabase(sh, dbName)
+	if err != nil {
+		return "", err
+	}
+
+	// Execute the statement on the loaded database state
+	newDbState, result, err := ExecuteOnDB(sh, dbName, db, stmt)
+	if err != nil {
+		return "", err
+	}
+
+	// For read queries, just return the result
+	if _, ok := stmt.(*ast.SelectStmt); ok {
+		return result, nil
+	}
+
+	// For write queries, save the new state and publish
+	newDbCID, err := AddObject(sh, newDbState)
+	if err != nil {
+		return "", err
+	}
+
+	UpdateCache(dbName, newDbCID)
+	PublishAsync(sh, dbName, newDbCID)
+
+	return result, nil
+}
+
+// ExecuteOnDB executes a statement against an in-memory database object.
+// It returns the potentially modified database state and a result string.
+// It does NOT save or publish the result.
+func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.Statement) (*pb.Database, string, error) {
+	switch s := stmt.(type) {
+	case *ast.CreateTableStmt:
+		newDb, err := MigrateDB(sh, db, s.Name, &s.Schema)
+		if err != nil {
+			return nil, "", err
+		}
+		return newDb, fmt.Sprintf("Table '%s' created successfully in database '%s'.", s.Name, dbName), nil
+	case *ast.DropTableStmt:
+		newDb, err := DropDB(sh, db, s.Name)
+		if err != nil {
+			return nil, "", err
+		}
+		return newDb, fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
+	case *ast.SelectStmt:
+		rows, err := QueryDB(sh, db, s.Table, s.Columns, s.Where)
+		if err != nil {
+			return nil, "", err
+		}
 		jsonResult, err := json.Marshal(rows)
 		if err != nil {
-			return "", fmt.Errorf("failed to marshal result to JSON: %w", err)
+			return nil, "", fmt.Errorf("failed to marshal result to JSON: %w", err)
 		}
-
-		return string(jsonResult), nil
-
+		return db, string(jsonResult), nil // db is not modified
 	case *ast.InsertStmt:
-		err = Insert(ipfsAPI, dbName, s.Table, s.Values)
+		newDb, err := InsertDB(sh, db, s.Table, s.Values)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
-
-		return "INSERT successful", nil
-
+		return newDb, "INSERT successful", nil
 	case *ast.UpdateStmt:
-		affectedRows, err := Update(ipfsAPI, dbName, s.Table, s.Set.Column, s.Set.Value, s.Where)
+		newDb, affectedRows, err := UpdateDB(sh, db, s.Table, s.Set.Column, s.Set.Value, s.Where)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
-
-		return fmt.Sprintf("UPDATE successful. %d rows affected.", affectedRows), nil
-
+		return newDb, fmt.Sprintf("UPDATE successful. %d rows affected.", affectedRows), nil
 	case *ast.DeleteStmt:
-		affectedRows, err := Delete(ipfsAPI, dbName, s.Table, s.Where)
+		newDb, affectedRows, err := DeleteDB(sh, db, s.Table, s.Where)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
-
-		return fmt.Sprintf("DELETE successful. %d rows affected.", affectedRows), nil
-
+		return newDb, fmt.Sprintf("DELETE successful. %d rows affected.", affectedRows), nil
 	case *ast.CreateIndexStmt:
-		err = CreateIndex(ipfsAPI, dbName, s.Table, s.Column)
+		newDb, err := CreateIndexDB(sh, db, s.Table, s.Column)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
-		return fmt.Sprintf("Index on column '%s' for table '%s' created successfully.", s.Column, s.Table), nil
+		return newDb, fmt.Sprintf("Index on column '%s' for table '%s' created successfully.", s.Column, s.Table), nil
+	// These are handled by the dispatcher, but we can add a safeguard.
+	case *ast.BeginStmt, *ast.CommitStmt, *ast.RollbackStmt:
+		return nil, "", fmt.Errorf("transaction control statements cannot be executed in this context")
+	// CreateDatabase is also handled separately.
+	case *ast.CreateDatabaseStmt:
+		return nil, "", fmt.Errorf("CREATE DATABASE cannot be run within a database context or transaction")
 	default:
-		return "", fmt.Errorf("unsupported query type: %T", s)
+		return nil, "", fmt.Errorf("unsupported query type: %T", s)
 	}
 }

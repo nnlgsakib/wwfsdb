@@ -21,10 +21,15 @@ func Query(ipfsAPI, dbName, tableName string, columns []string, where ast.Expres
 		return nil, err
 	}
 
+	return QueryDB(sh, db, tableName, columns, where)
+}
+
+// QueryDB retrieves rows from an in-memory database object
+func QueryDB(sh *shell.Shell, db *pb.Database, tableName string, columns []string, where ast.Expression) ([]map[string]interface{}, error) {
 	// 2. Get the table CID from the database
 	tableCID, ok := db.Tables[tableName]
 	if !ok {
-		return nil, fmt.Errorf("table %s not found in database %s", tableName, dbName)
+		return nil, fmt.Errorf("table %s not found in database", tableName)
 	}
 
 	// 3. Load the table

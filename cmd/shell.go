@@ -1,4 +1,3 @@
-
 package cmd
 
 import (
@@ -25,6 +24,8 @@ Example:
 	Run: func(cmd *cobra.Command, args []string) {
 		dbName := args[0]
 		c := client.NewClient(viper.GetString("rpc-server"))
+		var sessionID string
+		inTransaction := false
 
 		fmt.Printf("Connected to database '%s'. Type 'exit' or 'quit' to leave.\n", dbName)
 
@@ -32,32 +33,37 @@ Example:
 		var query strings.Builder
 
 		for {
-			if query.Len() == 0 {
-				fmt.Print("wwfsdb> ")
-			} else {
-				fmt.Print("     -> ")
+			prompt := "wwfsdb> "
+			if inTransaction {
+				prompt = fmt.Sprintf("wwfsdb (%s)*> ", dbName)
+			} else if query.Len() > 0 {
+				prompt = "     -> "
 			}
+			fmt.Print(prompt)
 
 			if !scanner.Scan() {
 				break
 			}
 
 			line := scanner.Text()
-			line = strings.TrimSpace(line)
+			trimmedLine := strings.TrimSpace(line)
 
-			if line == "exit" || line == "quit" {
+			if trimmedLine == "exit" || trimmedLine == "quit" {
 				break
 			}
 
 			query.WriteString(line)
 			query.WriteString(" ")
 
-			if !strings.HasSuffix(line, ";") {
+			if !strings.HasSuffix(trimmedLine, ";") {
 				continue
 			}
 
 			queryString := query.String()
 			query.Reset()
+
+			// --- Client-side check for transaction commands ---
+			trimmedQuery := strings.TrimSpace(strings.ToUpper(strings.TrimRight(queryString, "; ")))
 
 			stmt, err := ssql.Parse(queryString)
 			if err != nil {
@@ -65,17 +71,29 @@ Example:
 				continue
 			}
 
-			resultString, err := c.ExecuteQuery(dbName, queryString)
+			// --- Execute Query ---
+			result, err := c.ExecuteQuery(dbName, queryString, sessionID)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
+				if inTransaction {
+					fmt.Fprintln(os.Stderr, "Transaction may be in an inconsistent state. It is recommended to ROLLBACK.")
+				}
 				continue
+			}
+
+			if trimmedQuery == "BEGIN" {
+				inTransaction = true
+				sessionID = result.SessionID
+			} else if trimmedQuery == "COMMIT" || trimmedQuery == "ROLLBACK" {
+				inTransaction = false
+				sessionID = ""
 			}
 
 			// Handle different statement types
 			switch s := stmt.(type) {
 			case *ast.SelectStmt:
 				var rows []map[string]interface{}
-				if err := json.Unmarshal([]byte(resultString), &rows); err != nil {
+				if err := json.Unmarshal([]byte(result.Result), &rows); err != nil {
 					fmt.Fprintln(os.Stderr, "Error unmarshalling result:", err)
 					continue
 				}
@@ -117,7 +135,7 @@ Example:
 					fmt.Printf("\n(%d rows)\n", len(rows))
 				}
 			default:
-				fmt.Println(resultString)
+				fmt.Println(result.Result)
 			}
 		}
 

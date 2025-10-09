@@ -32,7 +32,7 @@ var migrateCmd = &cobra.Command{
 		}
 
 		c := client.NewClient(viper.GetString("rpc-server"))
-		result, err := c.ExecuteQuery(dbName, string(content))
+		result, err := c.ExecuteQuery(dbName, string(content), "")
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return

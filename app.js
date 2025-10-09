@@ -9,15 +9,20 @@ const testState = {
 };
 
 // --- Core API Communication (JSON-RPC) ---
-async function sendQuery(dbName, query) {
+async function sendQuery(dbName, query, sessionID = null) {
   return new Promise((resolve, reject) => {
+    const params = {
+        db_name: dbName,
+        query: query,
+    };
+    if (sessionID) {
+        params.session_id = sessionID;
+    }
+
     const postData = JSON.stringify({
         jsonrpc: '2.0',
         method: 'wwfs.ExecuteQuery',
-        params: [{
-            db_name: dbName,
-            query: query,
-        }],
+        params: [params],
         id: testState.requestId++,
     });
 
@@ -75,8 +80,8 @@ function safeParseResult(res) {
     }
 }
 
-async function assertQueryResult(query, expected, message) {
-    const res = await sendQuery(dbName, query);
+async function assertQueryResult(query, expected, message, sessionID = null) {
+    const res = await sendQuery(dbName, query, sessionID);
     if (res.error) {
         console.log(`  ❌ ${message}`);
         testState.failed++;
@@ -137,8 +142,8 @@ async function assertQueryResult(query, expected, message) {
     }
 }
 
-async function assertCommandSuccess(query, message) {
-    const res = await sendQuery(dbName, query);
+async function assertCommandSuccess(query, message, sessionID = null) {
+    const res = await sendQuery(dbName, query, sessionID);
     const data = safeParseResult(res);
     const upperQuery = query.trim().toUpperCase();
     let success = !res.error;
@@ -164,8 +169,8 @@ async function assertCommandSuccess(query, message) {
     }
 }
 
-async function assertCommandFailure(query, message) {
-    const res = await sendQuery(dbName, query);
+async function assertCommandFailure(query, message, sessionID = null) {
+    const res = await sendQuery(dbName, query, sessionID);
     const success = !!res.error;
     console.log(`  ${success ? '✅' : '❌'} ${message}`);
     if (!success) {
@@ -312,6 +317,68 @@ async function runIndexingTests() {
         'Selects deleted supplier to confirm index update');
 }
 
+async function runTransactionTests() {
+    console.log('\n--- 🧪 Running Transaction Tests ---\n');
+
+    let sessionID = null;
+
+    console.log('  --- BEGIN Transaction ---');
+    let res = await sendQuery(dbName, 'BEGIN');
+    if (res.error) {
+        console.log(`  ❌ Failed to BEGIN transaction: ${res.error.message || res.error}`);
+        testState.failed++;
+        return;
+    }
+    sessionID = res.result.session_id;
+    console.log(`  ✅ BEGIN transaction (Session ID: ${sessionID})`);
+    testState.passed++;
+
+    console.log('\n  --- Operations within Transaction ---');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('100', 'Transacted Item', '100.00', 'true');`, 'Inserts a new row within transaction', sessionID);
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 150.00 WHERE id = 100;`, 'Updates a row within transaction', sessionID);
+
+    console.log('\n  --- Verify Isolation (Outside Transaction) ---');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, [], 'Changes are NOT visible outside transaction');
+
+    console.log('\n  --- COMMIT Transaction ---');
+    await assertCommandSuccess('COMMIT;', 'Commits the transaction', sessionID);
+    sessionID = null; // Clear session ID after commit
+
+    console.log('\n  --- Verify Changes After COMMIT ---');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 100`, 
+        [{ "id": 100, "label": "Transacted Item", "price": 150.00, "is_active": true }], 
+        'Changes ARE visible after commit');
+
+    console.log('\n  --- BEGIN another Transaction for ROLLBACK ---');
+    res = await sendQuery(dbName, 'BEGIN');
+    if (res.error) {
+        console.log(`  ❌ Failed to BEGIN transaction for rollback: ${res.error.message || res.error}`);
+        testState.failed++;
+        return;
+    }
+    sessionID = res.result.session_id;
+    console.log(`  ✅ BEGIN transaction for rollback (Session ID: ${sessionID})`);
+    testState.passed++;
+
+    console.log('\n  --- Operations within Transaction (for Rollback) ---');
+    await assertCommandSuccess(`INSERT INTO data_types_test VALUES ('101', 'Rollback Item', '200.00', 'false');`, 'Inserts a new row for rollback', sessionID);
+    await assertCommandSuccess(`UPDATE data_types_test SET price = 250.00 WHERE id = 101;`, 'Updates a row for rollback', sessionID);
+
+    console.log('\n  --- Verify Isolation (Outside Transaction) before Rollback ---');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible outside transaction before rollback');
+
+    console.log('\n  --- ROLLBACK Transaction ---');
+    await assertCommandSuccess('ROLLBACK;', 'Rolls back the transaction', sessionID);
+    sessionID = null; // Clear session ID after rollback
+
+    console.log('\n  --- Verify Changes After ROLLBACK ---');
+    await assertQueryResult(`SELECT * FROM data_types_test WHERE id = 101`, [], 'Changes are NOT visible after rollback');
+
+    console.log('\n  --- Test for invalid COMMIT/ROLLBACK without BEGIN ---');
+    await assertCommandFailure('COMMIT;', 'Fails to COMMIT without an active transaction');
+    await assertCommandFailure('ROLLBACK;', 'Fails to ROLLBACK without an active transaction');
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -321,6 +388,7 @@ async function main() {
     await runDataTypeTests();
     await runRegressionTests();
     await runIndexingTests();
+    await runTransactionTests(); // New: Run transaction tests
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

@@ -20,9 +20,33 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 		return "", err
 	}
 
+	newDb, err := MigrateDB(sh, db, tableName, schema)
+	if err != nil {
+		return "", err
+	}
+
+	// 6. Update the database in IPFS
+	newDbCID, err := AddObject(sh, newDb)
+	if err != nil {
+		return "", err
+	}
+
+	// 7. Update the cache
+	UpdateCache(dbName, newDbCID)
+
+	// 8. Update the IPNS record in the background
+	PublishAsync(sh, dbName, newDbCID)
+
+	return newDbCID, nil
+}
+
+// MigrateDB adds a new table to an in-memory database object
+func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, schema *ssql.Schema) (*pb.Database, error) {
+	newDb := proto.Clone(db).(*pb.Database)
+
 	// Check if table already exists
-	if _, ok := db.Tables[tableName]; ok {
-		return "", fmt.Errorf("table '%s' already exists in database '%s'", tableName, dbName)
+	if _, ok := newDb.Tables[tableName]; ok {
+		return nil, fmt.Errorf("table '%s' already exists in database", tableName)
 	}
 
 	// 2. Convert ssql.Schema to pb.Schema and add to IPFS
@@ -32,7 +56,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	}
 	schemaCID, err := AddObject(sh, pbSchema)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// 3. Create a new table
@@ -45,7 +69,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	// 4. Add the table to IPFS
 	tableCID, err := AddObject(sh, table)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if db.Tables == nil {
@@ -55,19 +79,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 	// 5. Add the new table to the database
 	db.Tables[tableName] = tableCID
 
-	// 6. Update the database in IPFS
-	newDbCID, err := AddObject(sh, db)
-	if err != nil {
-		return "", err
-	}
-
-	// 7. Update the cache
-	UpdateCache(dbName, newDbCID)
-
-	// 8. Update the IPNS record in the background
-	publishAsync(sh, dbName, newDbCID)
-
-	return newDbCID, nil
+	return db, nil
 }
 
 // LoadTable loads a table from IPFS
@@ -99,16 +111,13 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 		return err
 	}
 
-	// 2. Check if the table exists
-	if _, ok := db.Tables[tableName]; !ok {
-		return fmt.Errorf("table %s not found in database %s", tableName, dbName)
+	newDb, err := DropDB(sh, db, tableName)
+	if err != nil {
+		return err
 	}
 
-	// 3. Remove the table from the database
-	delete(db.Tables, tableName)
-
 	// 4. Update the database in IPFS
-	newDbCID, err := AddObject(sh, db)
+	newDbCID, err := AddObject(sh, newDb)
 	if err != nil {
 		return err
 	}
@@ -117,8 +126,23 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 	UpdateCache(dbName, newDbCID)
 
 	// 6. Update the IPNS record in the background
-	publishAsync(sh, dbName, newDbCID)
+	PublishAsync(sh, dbName, newDbCID)
 	return nil
+}
+
+// DropDB removes a table from an in-memory database object
+func DropDB(sh *shell.Shell, db *pb.Database, tableName string) (*pb.Database, error) {
+	newDb := proto.Clone(db).(*pb.Database)
+
+	// 2. Check if the table exists
+	if _, ok := newDb.Tables[tableName]; !ok {
+		return nil, fmt.Errorf("table %s not found in database", tableName)
+	}
+
+	// 3. Remove the table from the database
+	delete(newDb.Tables, tableName)
+
+	return newDb, nil
 }
 
 // LoadSchema loads a schema from IPFS

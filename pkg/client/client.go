@@ -20,12 +20,14 @@ func NewClient(endpoint string) *RpcClient {
 // --- ExecuteQuery ---
 
 type ExecuteQueryArgs struct {
-	DbName string `json:"db_name"`
-	Query  string `json:"query"`
+	DbName    string `json:"db_name"`
+	Query     string `json:"query"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type ExecuteQueryResult struct {
-	Result string `json:"result"`
+	Result    string `json:"result"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type JSONRPCRequest struct {
@@ -40,10 +42,11 @@ type JSONRPCResponse struct {
 	ID     int             `json:"id"`
 }
 
-func (c *RpcClient) ExecuteQuery(dbName, query string) (string, error) {
+func (c *RpcClient) ExecuteQuery(dbName, query, sessionID string) (*ExecuteQueryResult, error) {
 	args := ExecuteQueryArgs{
-		DbName: dbName,
-		Query:  query,
+		DbName:    dbName,
+		Query:     query,
+		SessionID: sessionID,
 	}
 	request := JSONRPCRequest{
 		Method: "wwfs.ExecuteQuery",
@@ -52,22 +55,22 @@ func (c *RpcClient) ExecuteQuery(dbName, query string) (string, error) {
 	}
 	requestBody, err := json.Marshal(request)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	resp, err := http.Post(c.endpoint, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
-		return "", fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
+		return nil, fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
 	}
 	defer resp.Body.Close()
 
 	var rpcResponse JSONRPCResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if rpcResponse.Error != nil {
-		return "", fmt.Errorf("RPC error: %v", rpcResponse.Error)
+		return nil, fmt.Errorf("RPC error: %v", rpcResponse.Error)
 	}
 
 	var result ExecuteQueryResult
@@ -75,12 +78,12 @@ func (c *RpcClient) ExecuteQuery(dbName, query string) (string, error) {
 		// If the result is a plain string, it might be a direct result from a non-select query
 		var strResult string
 		if err2 := json.Unmarshal(rpcResponse.Result, &strResult); err2 == nil {
-			return strResult, nil
+			return &ExecuteQueryResult{Result: strResult}, nil
 		}
-		return "", err
+		return nil, err
 	}
 
-	return result.Result, nil
+	return &result, nil
 }
 
 // --- GetTableSchema ---

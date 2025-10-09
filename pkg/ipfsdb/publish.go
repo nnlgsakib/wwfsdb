@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// publishAsync updates the IPNS record for a database in the background
-func publishAsync(sh *shell.Shell, dbName, cid string) {
+// PublishAsync updates the IPNS record for a database in the background
+func PublishAsync(sh *shell.Shell, dbName, cid string) {
 	go func() {
 		if err := Publish(sh, dbName, cid); err != nil {
 			fmt.Fprintf(os.Stderr, "Error publishing to IPNS: %v\n", err)
