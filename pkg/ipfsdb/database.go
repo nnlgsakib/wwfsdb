@@ -123,7 +123,7 @@ func AddObject(sh *shell.Shell, obj proto.Message) (string, error) {
 		return "", err
 	}
 
-	return sh.Add(bytes.NewReader(data))
+	return sh.Add(bytes.NewReader(data), shell.CidVersion(1))
 }
 
 // ExecuteQuery is the top-level function for single, auto-committed queries.

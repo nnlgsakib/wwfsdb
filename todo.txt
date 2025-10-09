@@ -119,7 +119,7 @@ This stage introduces features crucial for making the database secure, reliable,
 
 - [ ] **5. Introduce an Access Control Layer:**
   - **Problem:** There is no security model; any user can modify any database.
-  - **Solution:** Design a basic authentication and authorization system. This could involve associating a public key with database creation and requiring write operations to be signed by the corresponding private key.
+  - **Solution:** Design a authentication  authentication and authorization system. This could involve associating a public key with database creation and requiring write operations to be signed by the corresponding private key.
 
 - [ ] **6. Add Integration with a Pinning Service:**
   - **Problem:** Data persistence relies on the local IPFS node. If the node is offline or the data is garbage-collected, the database is lost.
