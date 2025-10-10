@@ -1,12 +1,12 @@
 package ast
 
-// Expression represents a node in the expression tree.	
+// Expression represents a node in the expression tree.
 
 type Expression interface {
 	isExpression()
 }
 
-// BinaryExpr represents a binary operation (e.g., AND, OR).	
+// BinaryExpr represents a binary operation (e.g., AND, OR).
 
 type BinaryExpr struct {
 	Left     Expression
@@ -14,7 +14,7 @@ type BinaryExpr struct {
 	Right    Expression
 }
 
-// ComparisonExpr represents a comparison operation (e.g., =, >, <).	
+// ComparisonExpr represents a comparison operation (e.g., =, >, <).
 
 type ComparisonExpr struct {
 	Left     Expression
@@ -22,14 +22,14 @@ type ComparisonExpr struct {
 	Right    Expression
 }
 
-// LikeExpr represents a LIKE expression.	
+// LikeExpr represents a LIKE expression.
 
 type LikeExpr struct {
 	Left    Expression
 	Pattern Expression
 }
 
-// InExpr represents an IN expression.	
+// InExpr represents an IN expression.
 
 type InExpr struct {
 	Left   Expression
@@ -42,7 +42,7 @@ type PrefixExpression struct {
 	Right    Expression
 }
 
-// Literal represents a string or number literal.	
+// Literal represents a string or number literal.
 
 type Literal struct {
 	Value string
@@ -62,852 +62,273 @@ type BooleanLiteral struct {
 
 // Identifier represents a column name, possibly qualified with a table name.
 
-
-
 type Identifier struct {
-
-	Name           string
+	Name string
 
 	TableQualifier string
-
 }
 
-
-
-func (BinaryExpr) isExpression()     {}
+func (BinaryExpr) isExpression() {}
 
 func (ComparisonExpr) isExpression() {}
 
-func (LikeExpr) isExpression()       {}
+func (LikeExpr) isExpression() {}
 
-func (InExpr) isExpression()         {}
+func (InExpr) isExpression() {}
 
 func (PrefixExpression) isExpression() {}
 
-func (Literal) isExpression()        {}
+func (Literal) isExpression() {}
 
-func (NumberLiteral) isExpression()  {}
+func (NumberLiteral) isExpression() {}
 
 func (BooleanLiteral) isExpression() {}
 
-func (Identifier) isExpression()      {}
-
-
+func (Identifier) isExpression() {}
 
 // FromClause represents a source of rows for a SELECT statement (a table or a join).
 
-
-
 type FromClause interface {
-
 	isFromClause()
-
 }
-
-
 
 // TableIdentifier represents a single table in a FROM clause.
 
-
-
 type TableIdentifier struct {
-
 	Name string
-
 }
-
-
 
 // JoinClause represents an INNER or LEFT JOIN.
 
-
-
 type JoinClause struct {
+	Type string // "INNER" or "LEFT"
 
-	Type  string // "INNER" or "LEFT"
-
-	Left  FromClause
+	Left FromClause
 
 	Right FromClause
 
-	On    Expression
-
+	On Expression
 }
-
-
 
 func (TableIdentifier) isFromClause() {}
 
-func (JoinClause) isFromClause()      {}
-
-
+func (JoinClause) isFromClause() {}
 
 // Column represents a column in a table
 
 type Column struct {
-
 	Name string `json:"name"`
 
 	Type string `json:"type"`
-
 }
-
-
 
 // Schema represents the schema of a table
 
-
-
 type Schema struct {
-
 	Columns []Column `json:"columns"`
-
 }
-
-
 
 // UpdateClause represents a SET clause in an UPDATE statement
 
-
-
-
-
-
-
 type UpdateClause struct {
-
-
-
 	Column string
 
-
-
-	Value  Expression
-
-
-
+	Value Expression
 }
-
-
-
-
-
-
 
 // AlterTableAction represents a sub-command within an ALTER TABLE statement.
 
-
-
-
-
-
-
 type AlterTableAction interface {
-
-
-
 	isAlterTableAction()
-
-
-
 }
-
-
-
-
-
-
 
 // AddColumnClause represents an ADD COLUMN action.
 
-
-
-
-
-
-
 type AddColumnClause struct {
-
-
-
 	Column Column
-
-
-
 }
-
-
-
-
-
-
 
 // DropColumnClause represents a DROP COLUMN action.
 
-
-
-
-
-
-
 type DropColumnClause struct {
-
-
-
 	ColumnName string
-
-
-
 }
-
-
-
-
-
-
 
 // RenameColumnClause represents a RENAME COLUMN action.
 
-
-
-
-
-
-
 type RenameColumnClause struct {
-
-
-
 	OldName string
 
-
-
 	NewName string
-
-
-
 }
 
+func (AddColumnClause) isAlterTableAction() {}
 
-
-
-
-
-
-func (AddColumnClause) isAlterTableAction()    {}
-
-
-
-func (DropColumnClause) isAlterTableAction()   {}
-
-
+func (DropColumnClause) isAlterTableAction() {}
 
 func (RenameColumnClause) isAlterTableAction() {}
 
-
-
-
-
-
-
 // Node is a marker interface for AST nodes
-
-
-
-
-
-
 
 type Node interface{ isNode() }
 
-
-
-
-
-
-
 // Statement is a marker interface for SQL statements
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 type Statement interface {
-
-
-
-
-
-
-
 	Node
 
-
-
-
-
-
-
 	isStatement()
-
-
-
-
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // SelectExpr represents an item in a SELECT clause, which can be a column, a wildcard, or a function call.
 
-
-
-
-
-
-
 type SelectExpr interface {
-
-
-
-
-
-
-
 	isSelectExpr()
-
-
-
-
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ColumnExpr represents a standard column selection, e.g., `id` or `users.name`.
 
-
-
-
-
-
-
 type ColumnExpr struct {
-
-
-
-
-
-
-
-	Name           string
-
-
-
-
-
-
+	Name string
 
 	TableQualifier string
-
-
-
-
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // StarExpr represents a `*` selection.
 
-
-
-
-
-
-
 type StarExpr struct{}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // AggregateFunctionExpr represents an aggregate function call, e.g., `COUNT(*)` or `SUM(price)`.
 
-
-
-
-
-
-
 type AggregateFunctionExpr struct {
-
-
-
-
-
-
-
-	Name     string
-
-
-
-
-
-
+	Name string
 
 	Argument Expression // Can be an Identifier or a StarExpr (represented as an Identifier with Name: "*")
 
-
-
-
-
-
-
 }
 
+func (ColumnExpr) isSelectExpr() {}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-func (ColumnExpr) isSelectExpr()            {}
-
-
-
-
-
-
-
-func (StarExpr) isSelectExpr()              {}
-
-
-
-
-
-
+func (StarExpr) isSelectExpr() {}
 
 func (AggregateFunctionExpr) isSelectExpr() {}
 
 func (AggregateFunctionExpr) isExpression() {}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // OrderByExpression represents a column and direction in an ORDER BY clause.
 
-
-
-
-
-
-
 type OrderByExpression struct {
+	Column Expression // e.g., an Identifier
 
-
-
-
-
-
-
-	Column    Expression // e.g., an Identifier
-
-
-
-
-
-
-
-	Direction string     // "ASC" or "DESC"
-
-
-
-
-
-
+	Direction string // "ASC" or "DESC"
 
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Basic statement node wrappers (placeholders for future rich AST)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 type (
-
-
-
-
-
-
-
 	CreateDatabaseStmt struct{ Name string }
 
+	CreateTableStmt struct {
+		Name   string
+		Schema Schema
+	}
 
+	AlterTableStmt struct {
+		Table  string
+		Action AlterTableAction
+	}
 
+	DropTableStmt struct{ Name string }
 
-
-
-
-	CreateTableStmt    struct{ Name string; Schema Schema }
-
-
-
-
-
-
-
-	AlterTableStmt     struct{ Table string; Action AlterTableAction }
-
-
-
-
-
-
-
-	DropTableStmt      struct{ Name string }
-
-
-
-
-
-
-
-	SelectStmt         struct {
-
-
-
-
-
-
-
+	SelectStmt struct {
 		Columns []SelectExpr
 
+		From FromClause
 
-
-
-
-
-
-		From    FromClause
-
-
-
-
-
-
-
-		Where   Expression
-
-
-
-
-
-
+		Where Expression
 
 		GroupBy []Expression
 
-
-
-
-
-
-
 		OrderBy []*OrderByExpression
 
+		Limit Expression
 
-
-
-
-
-
-		Limit   Expression
-
-
-
-
-
-
-
-		Offset  Expression
-
-
-
-
-
-
-
+		Offset Expression
 	}
 
+	InsertStmt struct {
+		Table  string
+		Values []Expression
+	}
 
+	UpdateStmt struct {
+		Table string
+		Set   UpdateClause
+		Where Expression
+	}
 
+	DeleteStmt struct {
+		Table string
+		Where Expression
+	}
 
+	CreateIndexStmt struct {
+		Table  string
+		Column string
+	}
 
+	BeginStmt struct{}
 
-
-	InsertStmt struct{ Table string; Values []Expression }
-
-
-
-
-
-
-
-	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
-
-
-
-
-
-
-
-	DeleteStmt struct{ Table string; Where Expression }
-
-
-
-
-
-
-
-	CreateIndexStmt struct{ Table string; Column string }
-
-
-
-
-
-
-
-	BeginStmt    struct{}
-
-
-
-
-
-
-
-	CommitStmt   struct{}
-
-
-
-
-
-
+	CommitStmt struct{}
 
 	RollbackStmt struct{}
-
-
-
-
-
-
-
 )
-
-
-
-
-
-
 
 func (CreateDatabaseStmt) isNode() {}
 
-
-
 func (CreateDatabaseStmt) isStatement() {}
 
-
-
-func (CreateTableStmt) isNode()    {}
-
-
+func (CreateTableStmt) isNode() {}
 
 func (CreateTableStmt) isStatement() {}
 
+func (AlterTableStmt) isNode() {}
 
+func (AlterTableStmt) isStatement() {}
 
-func (AlterTableStmt) isNode()      {}
-
-
-
-func (AlterTableStmt) isStatement()   {}
-
-
-
-func (DropTableStmt) isNode()      {}
-
-
+func (DropTableStmt) isNode() {}
 
 func (DropTableStmt) isStatement() {}
 
+func (SelectStmt) isNode() {}
 
+func (SelectStmt) isStatement() {}
 
-func (SelectStmt) isNode()        {}
+func (InsertStmt) isNode() {}
 
+func (InsertStmt) isStatement() {}
 
+func (UpdateStmt) isNode() {}
 
-func (SelectStmt) isStatement()     {}
+func (UpdateStmt) isStatement() {}
 
+func (DeleteStmt) isNode() {}
 
-
-func (InsertStmt) isNode()        {}
-
-
-
-func (InsertStmt) isStatement()     {}
-
-
-
-func (UpdateStmt) isNode()        {}
-
-
-
-func (UpdateStmt) isStatement()     {}
-
-
-
-func (DeleteStmt) isNode()        {}
-
-
-
-func (DeleteStmt) isStatement()     {}
-
-
+func (DeleteStmt) isStatement() {}
 
 func (CreateIndexStmt) isNode() {}
 
-
-
 func (CreateIndexStmt) isStatement() {}
 
-
-
-func (BeginStmt) isNode()    {}
-
-
+func (BeginStmt) isNode() {}
 
 func (BeginStmt) isStatement() {}
 
-
-
-func (CommitStmt) isNode()    {}
-
-
+func (CommitStmt) isNode() {}
 
 func (CommitStmt) isStatement() {}
 
-
-
-func (RollbackStmt) isNode()    {}
-
-
+func (RollbackStmt) isNode() {}
 
 func (RollbackStmt) isStatement() {}
-
-
