@@ -243,6 +243,47 @@ func (l *Lexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
 		l.readChar()
 	}
+	
+	// Handle SQL comments
+	for l.ch == '-' || l.ch == '/' {
+		if l.ch == '-' && l.peekChar() == '-' {
+			// Skip single-line comment (-- comment)
+			for l.ch != 0 && l.ch != '\n' {
+				l.readChar()
+			}
+			// Skip the newline character too
+			if l.ch == '\n' {
+				l.readChar()
+			}
+			// Check for more whitespace after the comment
+			for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+				l.readChar()
+			}
+		} else if l.ch == '/' && l.peekChar() == '*' {
+			// Skip multi-line comment (/* comment */)
+			l.readChar() // consume first '/'
+			l.readChar() // consume '*'
+			for {
+				if l.ch == 0 {
+					// Reached EOF while in a comment, break to avoid infinite loop
+					break
+				}
+				if l.ch == '*' && l.peekChar() == '/' {
+					l.readChar() // consume '*'
+					l.readChar() // consume '/'
+					break
+				}
+				l.readChar()
+			}
+			// Check for more whitespace after the comment
+			for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+				l.readChar()
+			}
+		} else {
+			// Not a comment, exit the loop
+			break
+		}
+	}
 }
 
 func (l *Lexer) readIdentifier() string {
