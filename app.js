@@ -522,6 +522,65 @@ async function runJoinTests() {
     );
 }
 
+async function runAlterTableTests() {
+    console.log('\n--- 🧪 Running ALTER TABLE Tests ---\n');
+
+    // Setup a specific table for ALTER tests
+    await assertCommandSuccess(`CREATE TABLE alter_test (id INT, name VARCHAR(50));`, 'Creates a table for ALTER tests');
+    await assertCommandSuccess(`INSERT INTO alter_test VALUES (1, 'initial_name');`, 'Inserts initial data into alter_test');
+
+    console.log('\n  --- ADD COLUMN ---');
+    await assertCommandSuccess(`ALTER TABLE alter_test ADD COLUMN status VARCHAR(20);`, 'Adds a new column "status"');
+    
+    // Verify by inserting data into the new column
+    await assertCommandSuccess(`INSERT INTO alter_test VALUES (2, 'new_row', 'active');`, 'Inserts a row with data for the new column');
+    
+    // Verify by updating the new column on an old row
+    await assertCommandSuccess(`UPDATE alter_test SET status = 'inactive' WHERE id = 1;`, 'Updates the new column on an existing row');
+    
+    // Verify the result
+    await assertQueryResult(
+        `SELECT id, status FROM alter_test`,
+        [
+            { "id": 1, "status": "inactive" },
+            { "id": 2, "status": "active" }
+        ],
+        'Selects data from new and updated column'
+    );
+
+    console.log('\n  --- RENAME COLUMN ---');
+    await assertCommandSuccess(`ALTER TABLE alter_test RENAME COLUMN name TO full_name;`, 'Renames column "name" to "full_name"');
+
+    // The old 'name' column data is now inaccessible under the new schema for old rows.
+    // Selecting the new column name for an old row should result in null.
+    await assertQueryResult(
+        `SELECT id, full_name FROM alter_test WHERE id = 1`,
+        [{ "id": 1, "full_name": null }],
+        'Selects renamed column for old row (should be null)'
+    );
+
+    // We can, however, update the new column name
+    await assertCommandSuccess(`UPDATE alter_test SET full_name = 'name_updated' WHERE id = 1;`, 'Updates a value using the new column name');
+    await assertQueryResult(
+        `SELECT id, full_name FROM alter_test WHERE id = 1`,
+        [{ "id": 1, "full_name": "name_updated" }],
+        'Selects the updated value from the renamed column'
+    );
+
+    console.log('\n  --- DROP COLUMN ---');
+    await assertCommandSuccess(`ALTER TABLE alter_test DROP COLUMN status;`, 'Drops the column "status"');
+
+    // Verify the column is gone by trying to select it, which should fail.
+    await assertCommandFailure(`SELECT id, status FROM alter_test WHERE id = 1;`, 'Fails to select a dropped column');
+    
+    // Verify we can still select other columns
+    await assertQueryResult(
+        `SELECT id, full_name FROM alter_test WHERE id = 1`,
+        [{ "id": 1, "full_name": "name_updated" }],
+        'Selects other columns after a column is dropped'
+    );
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -533,6 +592,7 @@ async function main() {
     await runRegressionTests();
     await runIndexingTests();
     await runTransactionTests();
+    await runAlterTableTests();
     await runJoinTests();
 
   } catch (e) {

@@ -17,7 +17,7 @@ This stage addresses fundamental performance bottlenecks by replacing the "one o
 - [ ] **3. Develop a Cost-Based Query Planner & Optimizer:**
   - **Solution:** Create a query planner that analyzes a query's `WHERE` and `JOIN` clauses to choose the most efficient execution path (e.g., full DAG traversal vs. Prolly-Tree traversal).
 
-- [ ] **4. Introduce `ALTER TABLE` command:**
+- [✅] **4. Introduce `ALTER TABLE` command:**
   - **Solution:** Implement `ALTER TABLE` to support adding, dropping, and renaming columns. This involves creating a new version of the table's IPLD Schema and creating a new root CID for the table, providing a verifiable link between schema versions.
 
 ---

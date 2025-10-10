@@ -29,6 +29,25 @@ func Query(ipfsAPI, dbName string, columns []ast.SelectColumn, from ast.FromClau
 
 // QueryDB retrieves rows from an in-memory database object
 func QueryDB(sh *shell.Shell, db *pb.Database, columns []ast.SelectColumn, from ast.FromClause, where ast.Expression) ([]map[string]interface{}, error) {
+	// Pre-calculate all table schemas involved in the query.
+	tableNames := getTableNamesFromClause(from)
+	schemas := make(map[string]*pb.Schema)
+	for _, name := range tableNames {
+		tableCID, ok := db.Tables[name]
+		if !ok {
+			return nil, fmt.Errorf("table %s not found", name)
+		}
+		table, err := LoadTable(sh, tableCID)
+		if err != nil {
+			return nil, err
+		}
+		schema, err := LoadSchema(sh, table.SchemaCid)
+		if err != nil {
+			return nil, err
+		}
+		schemas[name] = schema
+	}
+
 	// 1. Execute the FROM clause (including any JOINs) to get a set of combined rows.
 	combinedRows, err := executeFromClause(sh, db, from)
 	if err != nil {
@@ -38,7 +57,7 @@ func QueryDB(sh *shell.Shell, db *pb.Database, columns []ast.SelectColumn, from 
 	// 2. Filter the combined rows using the WHERE clause.
 	filteredRows := make([]CombinedRow, 0)
 	for _, row := range combinedRows {
-		include, err := evaluateExpression(row, where)
+		include, err := evaluateExpression(row, where, schemas)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +67,7 @@ func QueryDB(sh *shell.Shell, db *pb.Database, columns []ast.SelectColumn, from 
 	}
 
 	// 3. Project the final columns for the result set.
-	results, err := projectColumns(sh, db, from, filteredRows, columns)
+	results, err := projectColumns(sh, db, from, filteredRows, columns, schemas)
 	if err != nil {
 		return nil, fmt.Errorf("error projecting columns: %w", err)
 	}
@@ -98,6 +117,26 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([
 		var joinedRows []CombinedRow
 		leftMatched := make(map[int]bool) // Keep track of matched left rows for LEFT JOIN
 
+		// Pre-calculate schemas for expression evaluation
+		// This is a simplified approach; a full query planner would do this more elegantly.
+		tableNames := getTableNamesFromClause(from)
+		schemas := make(map[string]*pb.Schema)
+		for _, name := range tableNames {
+			tableCID, ok := db.Tables[name]
+			if !ok {
+				return nil, fmt.Errorf("table %s not found", name)
+			}
+			table, err := LoadTable(sh, tableCID)
+			if err != nil {
+				return nil, err
+			}
+			schema, err := LoadSchema(sh, table.SchemaCid)
+			if err != nil {
+				return nil, err
+			}
+			schemas[name] = schema
+		}
+
 		// Nested loop join algorithm.
 		for i, lRow := range leftRows {
 			matchFound := false
@@ -112,7 +151,7 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([
 				}
 
 				// Evaluate the ON condition.
-				match, err := evaluateExpression(tempRow, f.On)
+				match, err := evaluateExpression(tempRow, f.On, schemas)
 				if err != nil {
 					return nil, fmt.Errorf("error evaluating ON condition: %w", err)
 				}
@@ -145,27 +184,8 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([
 }
 
 // projectColumns creates the final result set based on the selected columns.
-func projectColumns(sh *shell.Shell, db *pb.Database, from ast.FromClause, rows []CombinedRow, columns []ast.SelectColumn) ([]map[string]interface{}, error) {
+func projectColumns(sh *shell.Shell, db *pb.Database, from ast.FromClause, rows []CombinedRow, columns []ast.SelectColumn, schemas map[string]*pb.Schema) ([]map[string]interface{}, error) {
 	results := make([]map[string]interface{}, 0, len(rows))
-
-	// Pre-calculate all table schemas involved in the query.
-	tableNames := getTableNamesFromClause(from)
-	schemas := make(map[string]*pb.Schema)
-	for _, name := range tableNames {
-		tableCID, ok := db.Tables[name]
-		if !ok {
-			return nil, fmt.Errorf("table %s not found", name)
-		}
-		table, err := LoadTable(sh, tableCID)
-		if err != nil {
-			return nil, err
-		}
-		schema, err := LoadSchema(sh, table.SchemaCid)
-		if err != nil {
-			return nil, err
-		}
-		schemas[name] = schema
-	}
 
 	for _, combinedRow := range rows {
 		resultRow := make(map[string]interface{})
@@ -208,7 +228,7 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from ast.FromClause, rows 
 			}
 
 			// Handle specific column (e.g., users.id or just id)
-			val, err := evaluateIdentifier(combinedRow, &ast.Identifier{Name: col.Name, TableQualifier: col.TableQualifier})
+			val, err := evaluateIdentifier(combinedRow, &ast.Identifier{Name: col.Name, TableQualifier: col.TableQualifier}, schemas)
 			if err != nil {
 				return nil, err
 			}
@@ -235,18 +255,18 @@ func getTableNamesFromClause(from ast.FromClause) []string {
 	return nil
 }
 
-func evaluateExpression(row CombinedRow, expr ast.Expression) (bool, error) {
+func evaluateExpression(row CombinedRow, expr ast.Expression, schemas map[string]*pb.Schema) (bool, error) {
 	if expr == nil {
 		return true, nil
 	}
 
 	switch e := expr.(type) {
 	case *ast.BinaryExpr:
-		left, err := evaluateExpression(row, e.Left)
+		left, err := evaluateExpression(row, e.Left, schemas)
 		if err != nil {
 			return false, err
 		}
-		right, err := evaluateExpression(row, e.Right)
+		right, err := evaluateExpression(row, e.Right, schemas)
 		if err != nil {
 			return false, err
 		}
@@ -261,11 +281,11 @@ func evaluateExpression(row CombinedRow, expr ast.Expression) (bool, error) {
 		}
 
 	case *ast.ComparisonExpr:
-		left, err := evaluateExpressionValue(row, e.Left)
+		left, err := evaluateExpressionValue(row, e.Left, schemas)
 		if err != nil {
 			return false, err
 		}
-		right, err := evaluateExpressionValue(row, e.Right)
+		right, err := evaluateExpressionValue(row, e.Right, schemas)
 		if err != nil {
 			return false, err
 		}
@@ -343,11 +363,11 @@ func evaluateExpression(row CombinedRow, expr ast.Expression) (bool, error) {
 
 		return false, fmt.Errorf("cannot compare types %T and %T", left, right)
 	case *ast.LikeExpr:
-		left, err := evaluateExpressionValue(row, e.Left)
+		left, err := evaluateExpressionValue(row, e.Left, schemas)
 		if err != nil {
 			return false, err
 		}
-		pattern, err := evaluateExpressionValue(row, e.Pattern)
+		pattern, err := evaluateExpressionValue(row, e.Pattern, schemas)
 		if err != nil {
 			return false, err
 		}
@@ -358,19 +378,19 @@ func evaluateExpression(row CombinedRow, expr ast.Expression) (bool, error) {
 			return false, fmt.Errorf("LIKE operator requires string operands, got %T and %T", left, pattern)
 		}
 
-		matchPattern := strings.ReplaceAll(patternStr, "%", "*")
-		matchPattern = strings.ReplaceAll(matchPattern, "_", "?")
+		matchPattern := strings.ReplaceAll(patternStr, "_#", "?")
+		matchPattern = strings.ReplaceAll(matchPattern, "#", "*")
 
 		return filepath.Match(matchPattern, leftStr)
 
 	case *ast.InExpr:
-		left, err := evaluateExpressionValue(row, e.Left)
+		left, err := evaluateExpressionValue(row, e.Left, schemas)
 		if err != nil {
 			return false, err
 		}
 
 		for _, valExpr := range e.Values {
-			right, err := evaluateExpressionValue(row, valExpr)
+			right, err := evaluateExpressionValue(row, valExpr, schemas)
 			if err != nil {
 				return false, err
 			}
@@ -400,10 +420,10 @@ func getNumericValue(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-func evaluateExpressionValue(row CombinedRow, expr ast.Expression) (interface{}, error) {
+func evaluateExpressionValue(row CombinedRow, expr ast.Expression, schemas map[string]*pb.Schema) (interface{}, error) {
 	switch e := expr.(type) {
 	case *ast.Identifier:
-		return evaluateIdentifier(row, e)
+		return evaluateIdentifier(row, e, schemas)
 	case *ast.Literal:
 		return e.Value, nil
 	case *ast.NumberLiteral:
@@ -411,7 +431,7 @@ func evaluateExpressionValue(row CombinedRow, expr ast.Expression) (interface{},
 	case *ast.BooleanLiteral:
 		return e.Value, nil
 	case *ast.PrefixExpression:
-		right, err := evaluateExpressionValue(row, e.Right)
+		right, err := evaluateExpressionValue(row, e.Right, schemas)
 		if err != nil {
 			return nil, err
 		}
@@ -428,9 +448,27 @@ func evaluateExpressionValue(row CombinedRow, expr ast.Expression) (interface{},
 }
 
 // evaluateIdentifier resolves an identifier (e.g., `users.id` or `id`) against a combined row.
-func evaluateIdentifier(row CombinedRow, ident *ast.Identifier) (interface{}, error) {
+// It is now schema-aware.
+func evaluateIdentifier(row CombinedRow, ident *ast.Identifier, schemas map[string]*pb.Schema) (interface{}, error) {
 	// Case 1: Identifier is fully qualified (e.g., users.id)
 	if ident.TableQualifier != "" {
+		tableSchema, ok := schemas[ident.TableQualifier]
+		if !ok {
+			return nil, fmt.Errorf("table %s not found in FROM clause", ident.TableQualifier)
+		}
+
+		// Check if column exists in schema
+		foundInSchema := false
+		for _, col := range tableSchema.Columns {
+			if col.Name == ident.Name {
+				foundInSchema = true
+				break
+			}
+		}
+		if !foundInSchema {
+			return nil, fmt.Errorf("column %s not found in table %s", ident.Name, ident.TableQualifier)
+		}
+
 		tableData, ok := row[ident.TableQualifier]
 		if !ok {
 			return nil, fmt.Errorf("table %s not found in FROM clause", ident.TableQualifier)
@@ -438,9 +476,10 @@ func evaluateIdentifier(row CombinedRow, ident *ast.Identifier) (interface{}, er
 		if tableData == nil { // This happens in a LEFT JOIN where there was no match
 			return nil, nil
 		}
+
 		valAny, ok := tableData.Values[ident.Name]
 		if !ok {
-			return nil, fmt.Errorf("column %s not found in table %s", ident.Name, ident.TableQualifier)
+			return nil, nil // Column is in schema but not in this specific row's data, return null
 		}
 		return FromAny(valAny)
 	}
@@ -448,25 +487,39 @@ func evaluateIdentifier(row CombinedRow, ident *ast.Identifier) (interface{}, er
 	// Case 2: Identifier is unqualified (e.g., id). We need to find which table it belongs to.
 	var foundValue interface{}
 	var foundInTable string
-	for tableName, tableData := range row {
-		if tableData == nil {
-			continue
-		}
-		if valAny, ok := tableData.Values[ident.Name]; ok {
-			if foundInTable != "" {
-				return nil, fmt.Errorf("ambiguous column name: %s exists in multiple tables", ident.Name)
+	var valueFound bool
+
+	for tableName, tableSchema := range schemas {
+		for _, col := range tableSchema.Columns {
+			if col.Name == ident.Name {
+				// Found a table with this column in its schema
+				if foundInTable != "" {
+					return nil, fmt.Errorf("ambiguous column name: %s exists in multiple tables", ident.Name)
+				}
+				foundInTable = tableName
+
+				// Now get the value from the row data if it exists
+				if tableData, ok := row[tableName]; ok && tableData != nil {
+					if valAny, dataOk := tableData.Values[ident.Name]; dataOk {
+						val, err := FromAny(valAny)
+						if err != nil {
+							return nil, err
+						}
+						foundValue = val
+						valueFound = true
+					}
+				}
+				break // Move to next table
 			}
-			foundInTable = tableName
-			val, err := FromAny(valAny)
-			if err != nil {
-				return nil, err
-			}
-			foundValue = val
 		}
 	}
 
 	if foundInTable == "" {
-		return nil, fmt.Errorf("column %s not found in any table", ident.Name)
+		return nil, fmt.Errorf("column %s not found in any table in FROM clause", ident.Name)
+	}
+
+	if !valueFound {
+		return nil, nil // Column is in a schema, but no value in this row, return null
 	}
 
 	return foundValue, nil

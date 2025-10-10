@@ -40,6 +40,11 @@ const (
 	CREATE   = "CREATE"
 	DATABASE = "DATABASE"
 	TABLE    = "TABLE"
+	ALTER    = "ALTER"
+	ADD      = "ADD"
+	COLUMN   = "COLUMN"
+	RENAME   = "RENAME"
+	TO       = "TO"
 	DROP     = "DROP"
 	SELECT   = "SELECT"
 	FROM     = "FROM"
@@ -70,6 +75,11 @@ var keywords = map[string]TokenType{
 	"CREATE":   CREATE,
 	"DATABASE": DATABASE,
 	"TABLE":    TABLE,
+	"ALTER":    ALTER,
+	"ADD":      ADD,
+	"COLUMN":   COLUMN,
+	"RENAME":   RENAME,
+	"TO":       TO,
 	"DROP":     DROP,
 	"SELECT":   SELECT,
 	"FROM":     FROM,

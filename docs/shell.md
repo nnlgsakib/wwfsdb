@@ -16,7 +16,7 @@ wwfsdb shell [database_name]
 
 ### Write Access
 
-To perform write operations (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, etc.), you **must** provide the database owner's private key using the global `--private-key` flag.
+To perform write operations (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, etc.), you **must** provide the database owner's private key using the global `--private-key` flag.
 
 ```sh
 wwfsdb --private-key [your_private_key] shell [database_name]

@@ -151,6 +151,33 @@ wwfsdb --private-key [key] drop [database_name] "DROP TABLE [table_name]"
 wwfsdb --private-key <key> drop my_app_db "DROP TABLE users"
 ```
 
+### `alter`
+
+Executes an `ALTER TABLE` statement to modify a table's schema.
+
+**Usage:**
+```sh
+wwfsdb --private-key [key] alter [database_name] "ALTER TABLE [table_name] [action]"
+```
+
+**Supported Actions:**
+
+- **`ADD COLUMN`**: Adds a new column to a table. Existing rows will have a `null` value for this column until it is updated.
+  ```sh
+  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users ADD COLUMN age INT"
+  ```
+
+- **`DROP COLUMN`**: Removes a column from a table's schema. The data for this column in existing rows is not deleted from storage but becomes inaccessible.
+  ```sh
+  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users DROP COLUMN age"
+  ```
+
+- **`RENAME COLUMN`**: Renames an existing column.
+  **Important**: This only changes the schema. Existing data will not be accessible under the new column name. A data migration is required to update existing rows.
+  ```sh
+  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users RENAME COLUMN name TO full_name"
+  ```
+
 ### `shell`
 
 Starts an interactive shell session for a specific database. See `shell.md` for detailed instructions.

@@ -21,7 +21,7 @@ The `params` array must contain a single JSON object with the following fields:
 
 #### Authentication Signature
 
-For write queries (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, etc.), a signature must be provided if the target database has an owner. The signature is created by:
+For write queries (`INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, etc.), a signature must be provided if the target database has an owner. The signature is created by:
 
 1.  Constructing a message string in the format: `[db_name]:[query]`.
 2.  Signing this message string with the database owner's private key using ECDSA with a P-256 curve and SHA-256 hash.

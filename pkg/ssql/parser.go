@@ -254,6 +254,8 @@ func (p *Parser) ParseStatement() ast.Statement {
 	switch p.curToken.Type {
 	case lexer.CREATE:
 		return p.parseCreateStatement()
+	case lexer.ALTER:
+		return p.parseAlterTableStatement()
 	case lexer.DROP:
 		return p.parseDropStatement()
 	case lexer.SELECT:
@@ -273,6 +275,100 @@ func (p *Parser) ParseStatement() ast.Statement {
 	default:
 		return nil
 	}
+}
+
+func (p *Parser) parseAlterTableStatement() *ast.AlterTableStmt {
+	stmt := &ast.AlterTableStmt{}
+
+	if !p.expectPeek(lexer.TABLE) {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	stmt.Table = p.curToken.Literal
+
+	switch p.peekToken.Type {
+	case lexer.ADD:
+		p.nextToken() // consume table name
+		stmt.Action = p.parseAddColumn()
+	case lexer.DROP:
+		p.nextToken()
+		stmt.Action = p.parseDropColumn()
+	case lexer.RENAME:
+		p.nextToken()
+		stmt.Action = p.parseRenameColumn()
+	default:
+		msg := fmt.Sprintf("expected next token to be ADD, DROP, or RENAME, got %s instead", p.peekToken.Type)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+
+	if p.peekTokenIs(lexer.SEMICOLON) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseAddColumn() ast.AlterTableAction {
+	if !p.expectPeek(lexer.COLUMN) {
+		return nil
+	}
+
+	addColumn := &ast.AddColumnClause{}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	addColumn.Column.Name = p.curToken.Literal
+
+	if !p.expectPeek(lexer.IDENT) { // Type
+		return nil
+	}
+	addColumn.Column.Type = p.curToken.Literal
+
+	return addColumn
+}
+
+func (p *Parser) parseDropColumn() ast.AlterTableAction {
+	if !p.expectPeek(lexer.COLUMN) {
+		return nil
+	}
+
+	dropColumn := &ast.DropColumnClause{}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	dropColumn.ColumnName = p.curToken.Literal
+
+	return dropColumn
+}
+
+func (p *Parser) parseRenameColumn() ast.AlterTableAction {
+	if !p.expectPeek(lexer.COLUMN) {
+		return nil
+	}
+
+	renameColumn := &ast.RenameColumnClause{}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	renameColumn.OldName = p.curToken.Literal
+
+	if !p.expectPeek(lexer.TO) {
+		return nil
+	}
+
+	if !p.expectPeek(lexer.IDENT) {
+		return nil
+	}
+	renameColumn.NewName = p.curToken.Literal
+
+	return renameColumn
 }
 
 func (p *Parser) parseBeginStatement() *ast.BeginStmt {

@@ -195,6 +195,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 	if err != nil {
 		return nil, 0, err
 	}
+	schemas := map[string]*pb.Schema{tableName: schema}
 
 	var columnType string
 	columnExists := false
@@ -235,7 +236,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, where)
+			include, err := evaluateExpression(CombinedRow{tableName: row}, where, schemas)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -325,6 +326,12 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, where ast.Expr
 		return nil, 0, err
 	}
 
+	schema, err := LoadSchema(sh, table.SchemaCid)
+	if err != nil {
+		return nil, 0, err
+	}
+	schemas := map[string]*pb.Schema{tableName: schema}
+
 	var deletedCount int
 	var newPageCIDs []string
 	for _, pageCID := range table.PageCids {
@@ -336,7 +343,7 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, where ast.Expr
 		var newRows []*pb.Row
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, where)
+			include, err := evaluateExpression(CombinedRow{tableName: row}, where, schemas)
 			if err != nil {
 				return nil, 0, err
 			}

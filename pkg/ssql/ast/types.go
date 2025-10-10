@@ -170,13 +170,143 @@ type Schema struct {
 
 
 
+
+
+
+
 type UpdateClause struct {
+
+
 
 	Column string
 
+
+
 	Value  Expression
 
+
+
 }
+
+
+
+
+
+
+
+// AlterTableAction represents a sub-command within an ALTER TABLE statement.
+
+
+
+
+
+
+
+type AlterTableAction interface {
+
+
+
+	isAlterTableAction()
+
+
+
+}
+
+
+
+
+
+
+
+// AddColumnClause represents an ADD COLUMN action.
+
+
+
+
+
+
+
+type AddColumnClause struct {
+
+
+
+	Column Column
+
+
+
+}
+
+
+
+
+
+
+
+// DropColumnClause represents a DROP COLUMN action.
+
+
+
+
+
+
+
+type DropColumnClause struct {
+
+
+
+	ColumnName string
+
+
+
+}
+
+
+
+
+
+
+
+// RenameColumnClause represents a RENAME COLUMN action.
+
+
+
+
+
+
+
+type RenameColumnClause struct {
+
+
+
+	OldName string
+
+
+
+	NewName string
+
+
+
+}
+
+
+
+
+
+
+
+func (AddColumnClause) isAlterTableAction()    {}
+
+
+
+func (DropColumnClause) isAlterTableAction()   {}
+
+
+
+func (RenameColumnClause) isAlterTableAction() {}
+
+
+
+
 
 
 
@@ -184,7 +314,15 @@ type UpdateClause struct {
 
 
 
+
+
+
+
 type Node interface{ isNode() }
+
+
+
+
 
 
 
@@ -192,13 +330,27 @@ type Node interface{ isNode() }
 
 
 
+
+
+
+
 type Statement interface {
+
+
 
 	Node
 
+
+
 	isStatement()
 
+
+
 }
+
+
+
+
 
 
 
@@ -206,13 +358,27 @@ type Statement interface {
 
 
 
+
+
+
+
 type SelectColumn struct {
+
+
 
 	Name           string
 
+
+
 	TableQualifier string
 
+
+
 }
+
+
+
+
 
 
 
@@ -220,61 +386,178 @@ type SelectColumn struct {
 
 
 
+
+
+
+
 type (
+
+
 
 	CreateDatabaseStmt struct{ Name string }
 
+
+
 	CreateTableStmt    struct{ Name string; Schema Schema }
+
+
+
+	AlterTableStmt     struct{ Table string; Action AlterTableAction }
+
+
 
 	DropTableStmt      struct{ Name string }
 
+
+
 	SelectStmt         struct {
+
+
 
 		Columns []SelectColumn // New field for selected columns
 
+
+
 		From    FromClause
+
+
 
 		Where   Expression
 
+
+
 	}
+
+
 
 	InsertStmt struct{ Table string; Values []Expression }
 
+
+
 	UpdateStmt struct{ Table string; Set UpdateClause; Where Expression }
+
+
 
 	DeleteStmt struct{ Table string; Where Expression }
 
+
+
 	CreateIndexStmt struct{ Table string; Column string }
+
+
 
 	BeginStmt    struct{}
 
+
+
 	CommitStmt   struct{}
+
+
 
 	RollbackStmt struct{}
 
+
+
 )
 
+
+
+
+
+
+
 func (CreateDatabaseStmt) isNode() {}
+
+
+
 func (CreateDatabaseStmt) isStatement() {}
+
+
+
 func (CreateTableStmt) isNode()    {}
+
+
+
 func (CreateTableStmt) isStatement() {}
+
+
+
+func (AlterTableStmt) isNode()      {}
+
+
+
+func (AlterTableStmt) isStatement()   {}
+
+
+
 func (DropTableStmt) isNode()      {}
+
+
+
 func (DropTableStmt) isStatement() {}
+
+
+
 func (SelectStmt) isNode()        {}
+
+
+
 func (SelectStmt) isStatement()     {}
+
+
+
 func (InsertStmt) isNode()        {}
+
+
+
 func (InsertStmt) isStatement()     {}
+
+
+
 func (UpdateStmt) isNode()        {}
+
+
+
 func (UpdateStmt) isStatement()     {}
+
+
+
 func (DeleteStmt) isNode()        {}
+
+
+
 func (DeleteStmt) isStatement()     {}
+
+
+
 func (CreateIndexStmt) isNode() {}
+
+
+
 func (CreateIndexStmt) isStatement() {}
+
+
+
 func (BeginStmt) isNode()    {}
+
+
+
 func (BeginStmt) isStatement() {}
+
+
+
 func (CommitStmt) isNode()    {}
+
+
+
 func (CommitStmt) isStatement() {}
+
+
+
 func (RollbackStmt) isNode()    {}
+
+
+
 func (RollbackStmt) isStatement() {}
 
 
