@@ -1,0 +1,6 @@
+{
+  "watch": ["*.go", "pkg/", "ssql_tests/"],
+  "ignore": [".git", "vendor", "testdata", "assets", "wwfsdb_cache", "tmp", "wwfsdb.exe", "build-errors.log"],
+  "ext": "go,tpl,tmpl,html",
+  "exec": "go build -o wwfsdb.exe . && cmd /c .\\wwfsdb.exe serve"
+}
