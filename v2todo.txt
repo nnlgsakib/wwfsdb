@@ -64,7 +64,7 @@ This stage transforms the database into a programmable layer, enabling decentral
     - `SELECT * FROM my_table AS OF 'bafy...';` to query a table's state at a previous root CID.
     - `GET_HISTORY('my_table', <row_id>);` to traverse the commit history DAG and retrieve a full, verifiable audit trail.
 
-- [ ] **4. Introduce Database Forking (DAG Branching):**
+- [✅] **4. Introduce Database Forking (DAG Branching):**
   - **Solution:** Implement a `FORK DATABASE my_db AS new_db;` command. This lightweight operation creates a new IPNS key pointing to an existing DAG root, enabling powerful Git-like workflows for data experimentation and collaboration.
 
 ---
@@ -97,7 +97,7 @@ This final stage is about making the platform easy to use, manage, and build upo
   - **Problem:** JSON-RPC is not ideal for modern front-end development.
   - **Solution:** Automatically generate a full-featured **GraphQL API** from the database's schemas. This API will support queries, mutations, and real-time subscriptions, providing a superior developer experience.
 
-- [ ] **2. Create Advanced Data Import/Export Tooling (CAR & DAG-JSON):**
+- [✅] **2. Create Advanced Data Import/Export Tooling (CAR & DAG-JSON):**
   - **Solution:** Add `wwfsdb data <import|export>` to support bulk loading and exporting. Add flags to export tables or entire databases as **`dag-json`** or into a **CAR (Content Addressable aRchive)** file for interoperability with the broader IPFS/IPLD ecosystem.
 
 - [ ] **3. Build a Comprehensive Automated Test Suite:**

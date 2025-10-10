@@ -147,3 +147,139 @@ func (c *RpcClient) GetTableSchema(dbName, tableName string) (*proto.Schema, err
 
 	return result.Schema, nil
 }
+
+// --- Export ---
+type ExportArgs struct {
+	DbName    string `json:"db_name"`
+	TableName string `json:"table_name,omitempty"`
+}
+
+type ExportResult struct {
+	JsonData string `json:"json_data"`
+}
+
+func (c *RpcClient) Export(dbName, tableName string) (string, error) {
+	args := ExportArgs{DbName: dbName, TableName: tableName}
+	request := JSONRPCRequest{
+		Method: "wwfs.Export",
+		Params: [1]any{args},
+		ID:     1,
+	}
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Post(c.endpoint, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResponse JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
+		return "", err
+	}
+
+	if rpcResponse.Error != nil {
+		return "", fmt.Errorf("RPC error: %v", rpcResponse.Error)
+	}
+
+	var result ExportResult
+	if err := json.Unmarshal(rpcResponse.Result, &result); err != nil {
+		return "", err
+	}
+
+	return result.JsonData, nil
+}
+
+// --- GetContentCID ---
+type GetContentCIDArgs struct {
+	DbName    string `json:"db_name"`
+	TableName string `json:"table_name,omitempty"`
+}
+
+type GetContentCIDResult struct {
+	CID string `json:"cid"`
+}
+
+func (c *RpcClient) GetContentCID(dbName, tableName string) (string, error) {
+	args := GetContentCIDArgs{DbName: dbName, TableName: tableName}
+	request := JSONRPCRequest{
+		Method: "wwfs.GetContentCID",
+		Params: [1]any{args},
+		ID:     1,
+	}
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Post(c.endpoint, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResponse JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
+		return "", err
+	}
+
+	if rpcResponse.Error != nil {
+		return "", fmt.Errorf("RPC error: %v", rpcResponse.Error)
+	}
+
+	var result GetContentCIDResult
+	if err := json.Unmarshal(rpcResponse.Result, &result); err != nil {
+		return "", err
+	}
+
+	return result.CID, nil
+}
+
+// --- ForkDatabase ---
+type ForkDatabaseArgs struct {
+	NewDbName   string `json:"new_db_name"`
+	SourceRootCID string `json:"source_root_cid"`
+}
+
+type ForkDatabaseResult struct {
+	ProgramID  string `json:"program_id"`
+	PrivateKey string `json:"private_key"`
+}
+
+func (c *RpcClient) ForkDatabase(newDbName, sourceRootCID string) (*ForkDatabaseResult, error) {
+	args := ForkDatabaseArgs{NewDbName: newDbName, SourceRootCID: sourceRootCID}
+	request := JSONRPCRequest{
+		Method: "wwfs.ForkDatabase",
+		Params: [1]any{args},
+		ID:     1,
+	}
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(c.endpoint, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResponse JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
+		return nil, err
+	}
+
+	if rpcResponse.Error != nil {
+		return nil, fmt.Errorf("RPC error: %v", rpcResponse.Error)
+	}
+
+	var result ForkDatabaseResult
+	if err := json.Unmarshal(rpcResponse.Result, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}

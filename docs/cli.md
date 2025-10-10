@@ -66,6 +66,88 @@ wwfsdb createdatabase "CREATE DATABASE my_app_db"
 # Private Key: a36d78ae4221369541cc271c0112121a37aad91f49d35403279e38bd7920653d
 ```
 
+### `data`
+
+A group of commands for bulk importing and exporting data.
+
+#### `data export`
+
+Exports a single table or an entire database to a file.
+
+**Usage:**
+```sh
+# Export an entire database
+wwfsdb data export [database_name] [flags]
+
+# Export a single table
+wwfsdb data export [database_name] [table_name] [flags]
+```
+
+**Flags:**
+- `-o, --output [path]` (required)
+  - The path to the output file.
+- `--format [format]`
+  - The output format. Can be `dag-json` or `car`.
+  - **Default:** `dag-json`
+
+**Examples:**
+```sh
+# Export the 'users' table to a JSON file
+wwfsdb data export my_app_db users -o users.json
+
+# Export the entire 'my_app_db' database to a JSON file
+wwfsdb data export my_app_db -o my_app_db.json
+
+# Export the 'users' table to a CAR file
+wwfsdb data export my_app_db users -o users.car --format car
+
+# Export the entire 'my_app_db' database to a CAR file
+wwfsdb data export my_app_db -o my_app_db.car --format car
+```
+
+#### `data import`
+
+Imports data from a file into a single table or creates a new database from a CAR file.
+
+**Usage:**
+```sh
+# Import into a single table from JSON
+wwfsdb --private-key [key] data import [db_name] [table_name] --input [file.json]
+
+# Import multiple tables into a database from JSON
+wwfsdb --private-key [key] data import [db_name] --input [file.json]
+
+# Import from a CAR file as a new, forked database
+wwfsdb data import [new_db_name] --input [file.car] --format car
+```
+
+**Flags:**
+- `-i, --input [path]` (required)
+  - The path to the input file.
+- `--format [format]`
+  - The input format. Can be `dag-json` or `car`.
+  - **Default:** `dag-json`
+
+**Description:**
+
+The import command has different behaviors based on the format and arguments:
+
+- **Single Table (JSON):** Imports an array of row objects from a JSON file into an existing table. Requires a private key.
+- **Full Database (JSON):** Imports data into multiple tables. The JSON file must be an object where keys are table names and values are arrays of row objects. Requires a private key and the tables must already exist.
+- **Full Database (CAR):** Imports a database from a `.car` file. This creates a **new, writable fork** of the database under `[new_db_name]`. This command does *not* require a private key, as it will generate a new one for the forked database and provide it to you.
+
+**Examples:**
+```sh
+# Import rows into the 'users' table from a JSON file
+wwfsdb --private-key <key> data import my_app_db users -i new_users.json
+
+# Import data for multiple tables from a single JSON file
+wwfsdb --private-key <key> data import my_app_db -i full_backup.json
+
+# Fork a database from a CAR file, creating 'my_forked_db'
+wwfsdb data import my_forked_db -i original.car --format car
+```
+
 ### `migrate`
 
 Creates one or more tables in an existing database from a `.ssql` schema file.

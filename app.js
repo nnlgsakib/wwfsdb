@@ -331,6 +331,7 @@ async function setupDatabase() {
     try {
         const createResult = JSON.parse(createRes.result.result);
         testState.privateKey = createResult.private_key;
+        console.log(testState.privateKey );
         console.log(`  ✅ Creates a new database (IPNS: ${createResult.program_id})`);
         console.log(`     Private Key stored for subsequent tests.`);
         testState.passed++;
