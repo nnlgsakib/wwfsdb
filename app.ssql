@@ -1,0 +1,95 @@
+-- Complex application schema based on tested features in app.js
+-- This includes all tables required for the complete test suite
+
+-- Main business entities
+CREATE TABLE suppliers (
+    supplier_id VARCHAR(255),
+    name VARCHAR(255),
+    contact_email VARCHAR(255),
+    rating INT
+);
+
+CREATE TABLE products (
+    product_id VARCHAR(255),
+    name VARCHAR(255),
+    description VARCHAR(255),
+    unit_cost FLOAT,
+    supplier_id VARCHAR(255)
+);
+
+-- Test table for data type validation
+CREATE TABLE data_types_test (
+    id INT,
+    label VARCHAR(50),
+    price FLOAT,
+    is_active BOOLEAN
+);
+
+-- Table for ALTER TABLE tests
+CREATE TABLE alter_test (
+    id INT,
+    name VARCHAR(50)
+);
+
+-- Table for advanced query tests
+CREATE TABLE sales (
+    id INT,
+    category VARCHAR(50),
+    region VARCHAR(50),
+    amount FLOAT,
+    quantity INT
+);
+
+-- Tables for JOIN tests
+CREATE TABLE customers (
+    customer_id VARCHAR(255),
+    name VARCHAR(255),
+    email VARCHAR(255),
+    registration_date INT
+);
+
+CREATE TABLE orders (
+    order_id VARCHAR(255),
+    customer_id VARCHAR(255),
+    product_id VARCHAR(255),
+    quantity INT,
+    total_amount FLOAT,
+    order_date INT
+);
+
+-- Table for indexing tests
+CREATE TABLE users (
+    user_id VARCHAR(255),
+    username VARCHAR(255),
+    email VARCHAR(255),
+    created_at INT,
+    is_active BOOLEAN
+);
+
+-- Table for transaction tests
+CREATE TABLE inventory (
+    item_id VARCHAR(255),
+    item_name VARCHAR(255),
+    stock_quantity INT,
+    price FLOAT
+);
+
+-- Table for aggregate function tests
+CREATE TABLE reviews (
+    review_id VARCHAR(255),
+    product_id VARCHAR(255),
+    rating INT,
+    comment VARCHAR(1000),
+    review_date INT
+);
+
+-- Create indexes based on operations tested in app.js
+CREATE INDEX ON suppliers (name);
+CREATE INDEX ON products (supplier_id);
+CREATE INDEX ON sales (category);
+CREATE INDEX ON sales (region);
+CREATE INDEX ON orders (customer_id);
+CREATE INDEX ON orders (product_id);
+CREATE INDEX ON users (username);
+CREATE INDEX ON users (email);
+CREATE INDEX ON inventory (item_name);
