@@ -1,0 +1,107 @@
+# WWSFDB v2: Project Roadmap - The Hyperspace Application Platform
+
+This roadmap outlines the evolution of WWSFDB from a database into a programmable application platform, designed to support highly complex, stateful, and reactive decentralized software. The goal is to create a high-performance, verifiable, and composable data engine that fully leverages the content-addressable nature of IPFS and its core data model, IPLD.
+
+---
+
+## Stage 1: Core Engine Rewrite for Performance & Scalability
+
+This stage addresses fundamental performance bottlenecks by replacing the "one object per row" model with a more scalable, DAG-native architecture.
+
+- [ ] **1. Implement IPLD-Native Paged Row Storage:**
+  - **Solution:** Redesign the storage backend to group multiple rows into larger "Page" objects defined by a formal **IPLD Schema**. A Table object becomes the root of a Merkle-DAG of these pages, making the database's physical layout transparent and navigable by any IPLD-aware tool.
+
+- [ ] **2. Design an Advanced, DAG-Based Indexing Structure:**
+  - **Solution:** Implement a **Prolly-Tree (Probabilistic B+-Tree)** on top of IPFS. As a native IPLD data structure, its nodes are content-addressed IPLD blocks, making the entire index a verifiable, incrementally updatable DAG. This is the key to enabling efficient range scans, sorting, and complex queries.
+
+- [ ] **3. Develop a Cost-Based Query Planner & Optimizer:**
+  - **Solution:** Create a query planner that analyzes a query's `WHERE` and `JOIN` clauses to choose the most efficient execution path (e.g., full DAG traversal vs. Prolly-Tree traversal).
+
+- [ ] **4. Introduce `ALTER TABLE` command:**
+  - **Solution:** Implement `ALTER TABLE` to support adding, dropping, and renaming columns. This involves creating a new version of the table's IPLD Schema and creating a new root CID for the table, providing a verifiable link between schema versions.
+
+---
+
+## Stage 2: Rich Querying & Advanced Data Types
+
+With a performant engine, this stage adds the features necessary for sophisticated data modeling and retrieval.
+
+- [ ] **1. Implement Full SQL Query Operations:**
+  - **Prerequisite:** Stage 1 Indexing Rework.
+  - **Features:** `ORDER BY`, `LIMIT` / `OFFSET`, `GROUP BY` with aggregate functions (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`).
+
+- [ ] **2. Introduce Advanced Data Integrity Constraints:**
+  - **Solution:** Implement `PRIMARY KEY`, `UNIQUE`, and `NOT NULL` constraints. Design a `FOREIGN KEY` system using **IPLD Links (CIDs)**, allowing a row to directly and verifiably reference a specific row in another table's DAG.
+
+- [ ] **3. Expand the Data Type System with Queryable IPLD Codecs:**
+  - **Solution:** Add support for complex data types, leveraging IPLD's multi-codec capabilities:
+    - [ ] `DATETIME` / `TIMESTAMP` for time-series data.
+    - [ ] `JSON` stored as a **`dag-cbor` IPLD block**, enabling deep, path-based queries directly into the JSON structure (e.g., `SELECT data['user/profile/name'] FROM events;`).
+    - [ ] `BLOB` for storing binary data.
+
+- [ ] **4. Implement Full-Text Search:**
+  - **Problem:** `LIKE` is insufficient for complex text search.
+  - **Solution:** Create a special `FTS` index type that builds an inverted index (as a separate Prolly-Tree) for text-based columns, enabling fast and relevance-based search queries.
+
+---
+
+## Stage 3: Programmability & Composability
+
+This stage transforms the database into a programmable layer, enabling decentralized business logic and data composition.
+
+- [ ] **1. Implement Decentralized Stored Procedures (Stateful WASM):**
+  - **Problem:** Business logic is handled entirely by the application layer.
+  - **Solution:** Evolve WASM triggers into stateful stored procedures. Allow developers to define procedures that can read from the database, perform complex computations, and write new data within a single, atomic transaction. This moves WWSFDB from a database to a verifiable computation engine.
+
+- [ ] **2. Introduce Composable Data Schemas & Views:**
+  - **Problem:** Data models are rigid and isolated.
+  - **Solution:**
+    - [ ] Create a **decentralized schema registry** where IPLD schemas can be published and referenced by CID.
+    - [ ] Implement `CREATE VIEW` to define virtual tables that can join and aggregate data across multiple tables and even **across different databases**, creating a unified data mesh.
+
+- [ ] **3. Implement Time-Travel & Verifiable Queries:**
+  - **Solution:** Introduce a syntax to query the database's Merkle-DAG at any point in its history.
+    - `SELECT * FROM my_table AS OF 'bafy...';` to query a table's state at a previous root CID.
+    - `GET_HISTORY('my_table', <row_id>);` to traverse the commit history DAG and retrieve a full, verifiable audit trail.
+
+- [ ] **4. Introduce Database Forking (DAG Branching):**
+  - **Solution:** Implement a `FORK DATABASE my_db AS new_db;` command. This lightweight operation creates a new IPNS key pointing to an existing DAG root, enabling powerful Git-like workflows for data experimentation and collaboration.
+
+---
+
+## Stage 4: Real-time, Security, & Identity
+
+This stage focuses on features for modern, reactive applications and robust, decentralized security.
+
+- [ ] **1. Implement Real-time Materialized Views & Subscriptions:**
+  - **Problem:** Complex applications require real-time updates, which is challenging in a decentralized system.
+  - **Solution:**
+    - [ ] Create an internal event log for all database changes.
+    - [ ] Implement `CREATE MATERIALIZED VIEW` to define queries that are automatically updated when their underlying data changes.
+    - [ ] Expose a **subscription API (e.g., via WebSockets)** allowing clients to listen for real-time updates to any query result or materialized view.
+
+- [ ] **2. Integrate Decentralized Identity (DID) & Access Control:**
+  - **Problem:** The security model needs to be more granular and aligned with web3 standards.
+  - **Solution:** Replace the simple public key model with a **DID-based system**. Create a special `_acl` table where permissions (`READ`, `WRITE`, `ADMIN`, `EXECUTE_PROCEDURE`) are granted to DIDs on a per-table, per-view, or even per-row basis.
+
+- [ ] **3. Add Built-in Pinning Service Integration:**
+  - **Solution:** Add a configuration section to the server to connect to remote IPFS pinning services. After a successful write, the server will automatically queue the new database root CID to be pinned for resilience.
+
+---
+
+## Stage 5: Developer Experience & Ecosystem
+
+This final stage is about making the platform easy to use, manage, and build upon.
+
+- [ ] **1. Add a Native GraphQL API Layer:**
+  - **Problem:** JSON-RPC is not ideal for modern front-end development.
+  - **Solution:** Automatically generate a full-featured **GraphQL API** from the database's schemas. This API will support queries, mutations, and real-time subscriptions, providing a superior developer experience.
+
+- [ ] **2. Create Advanced Data Import/Export Tooling (CAR & DAG-JSON):**
+  - **Solution:** Add `wwfsdb data <import|export>` to support bulk loading and exporting. Add flags to export tables or entire databases as **`dag-json`** or into a **CAR (Content Addressable aRchive)** file for interoperability with the broader IPFS/IPLD ecosystem.
+
+- [ ] **3. Build a Comprehensive Automated Test Suite:**
+  - **Solution:** Build a full suite of tests covering the parser, query engine, IPLD storage layer, and all API endpoints (RPC, GraphQL, WebSockets). Set up a CI pipeline for automated testing.
+
+- [ ] **4. Official Client Libraries with Full Feature Support:**
+  - **Solution:** Develop and publish official client libraries for popular languages (e.g., JavaScript/TypeScript, Python) that include helpers for GraphQL queries, real-time subscriptions, and DID-based authentication.
