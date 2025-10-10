@@ -58,3 +58,18 @@ message RegistryEntry {
 	string program_id = 2; // The IPNS Name (Key ID)
 	string key_name = 3;   // The local key name
 }
+
+// --- Prolly-Tree Messages ---
+
+// ProllyNodeValues is a wrapper for a list of strings, used for leaf node values.
+message ProllyNodeValues {
+    repeated string values = 1;
+}
+
+// ProllyNode represents a node in an immutable B-tree (Prolly-Tree).
+message ProllyNode {
+    repeated string keys = 1;
+    repeated ProllyNodeValues values = 2; // For leaf nodes
+    repeated string children = 3;         // For internal nodes (CIDs)
+    bool is_leaf = 4;
+}

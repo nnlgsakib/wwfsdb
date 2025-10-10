@@ -108,10 +108,21 @@ func CreateIndexDB(sh *shell.Shell, db *pb.Database, tableName, columnName strin
 			if _, ok := newIndex.Nodes[key]; !ok {
 				newIndex.Nodes[key] = &pb.IndexNode{}
 			}
-			// Note: In a paged system, we can't point to a row CID.
-			// For now, we'll point to the page CID. The query planner will need to scan this page.
-			// A future optimization (Prolly-Trees) would solve this more elegantly.
-			newIndex.Nodes[key].Cids = append(newIndex.Nodes[key].Cids, pageCID)
+
+			// Add the page CID to the index if it's not already there.
+			found := false
+			for _, cid := range newIndex.Nodes[key].Cids {
+				if cid == pageCID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				// Note: In a paged system, we can't point to a row CID.
+				// For now, we'll point to the page CID. The query planner will need to scan this page.
+				// A future optimization (Prolly-Trees) would solve this more elegantly.
+				newIndex.Nodes[key].Cids = append(newIndex.Nodes[key].Cids, pageCID)
+			}
 		}
 	}
 
@@ -134,21 +145,31 @@ func CreateIndexDB(sh *shell.Shell, db *pb.Database, tableName, columnName strin
 	return newDb, nil
 }
 
-// UpdateIndexesOnInsert updates all relevant indexes when a new row is added to a page.
+// UpdateIndexesOnInsert updates all relevant indexes when a new row is added.
+// This version is more efficient as it batches IPFS writes.
 func UpdateIndexesOnInsert(sh *shell.Shell, table *pb.Table, pageCID string, rowData *pb.Row) (*pb.Table, error) {
 	if len(table.Indexes) == 0 {
 		return table, nil // No indexes to update
 	}
 
-	for colName, indexCID := range table.Indexes {
+	newTable := proto.Clone(table).(*pb.Table)
+	// A map to hold loaded and modified indexes to avoid loading the same index multiple times
+	loadedIndexes := make(map[string]*pb.Index)
+
+	for colName, indexCID := range newTable.Indexes {
 		val, ok := rowData.Values[colName]
 		if !ok {
 			continue // This row doesn't have a value for the indexed column
 		}
 
-		index, err := LoadIndex(sh, indexCID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
+		index, ok := loadedIndexes[colName]
+		if !ok {
+			var err error
+			index, err = LoadIndex(sh, indexCID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
+			}
+			loadedIndexes[colName] = index
 		}
 
 		key, err := valueToString(val)
@@ -174,29 +195,34 @@ func UpdateIndexesOnInsert(sh *shell.Shell, table *pb.Table, pageCID string, row
 		if !found {
 			index.Nodes[key].Cids = append(index.Nodes[key].Cids, pageCID)
 		}
+	}
 
+	// Now, save all modified indexes and update the table's index CIDs
+	for colName, index := range loadedIndexes {
 		newIndexCID, err := AddObject(sh, index)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save updated index for column %s: %w", colName, err)
 		}
-
-		table.Indexes[colName] = newIndexCID
+		newTable.Indexes[colName] = newIndexCID
 	}
 
-	return table, nil
+	return newTable, nil
 }
 
 // UpdateIndexesOnDelete updates all relevant indexes when a row is deleted.
-// Note: This is a simplified implementation. It removes the page CID from the index
-// if the deleted row was the *last* row on that page with that value.
-// A more robust solution (like Prolly-Trees) is needed for perfect accuracy without high overhead.
-func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, page *pb.Page, rowData *pb.Row) (*pb.Table, error) {
+// This version is more efficient as it batches IPFS writes.
+// Note: This function's correctness depends on the caller providing the correct state of the page.
+// When called from UpdateDB, the page object might be in a post-update state, which can lead to incorrect index changes.
+func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, page *pb.Page, rowToDelete *pb.Row) (*pb.Table, error) {
 	if len(table.Indexes) == 0 {
 		return table, nil
 	}
 
-	for colName, indexCID := range table.Indexes {
-		val, ok := rowData.Values[colName]
+	newTable := proto.Clone(table).(*pb.Table)
+	loadedIndexes := make(map[string]*pb.Index)
+
+	for colName, indexCID := range newTable.Indexes {
+		val, ok := rowToDelete.Values[colName]
 		if !ok {
 			continue
 		}
@@ -209,7 +235,7 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, pag
 		// Check if any other row in the page has the same value for this column.
 		hasOtherRowsWithValue := false
 		for _, r := range page.Rows {
-			if r != rowData { // Don't compare the row with itself
+			if r != rowToDelete { // Don't compare the row with itself
 				if otherVal, ok := r.Values[colName]; ok {
 					if otherKey, _ := valueToString(otherVal); otherKey == key {
 						hasOtherRowsWithValue = true
@@ -221,9 +247,14 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, pag
 
 		// If no other row has this value, we can remove the page CID from the index for this key.
 		if !hasOtherRowsWithValue {
-			index, err := LoadIndex(sh, indexCID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
+			index, ok := loadedIndexes[colName]
+			if !ok {
+				var err error
+				index, err = LoadIndex(sh, indexCID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to load index %s: %w", indexCID, err)
+				}
+				loadedIndexes[colName] = index
 			}
 
 			if node, ok := index.Nodes[key]; ok {
@@ -238,17 +269,20 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, pag
 				} else {
 					node.Cids = newCIDs
 				}
-
-				newIndexCID, err := AddObject(sh, index)
-				if err != nil {
-					return nil, fmt.Errorf("failed to save updated index for column %s: %w", colName, err)
-				}
-				table.Indexes[colName] = newIndexCID
 			}
 		}
 	}
 
-	return table, nil
+	// Save all modified indexes
+	for colName, index := range loadedIndexes {
+		newIndexCID, err := AddObject(sh, index)
+		if err != nil {
+			return nil, fmt.Errorf("failed to save updated index for column %s: %w", colName, err)
+		}
+		newTable.Indexes[colName] = newIndexCID
+	}
+
+	return newTable, nil
 }
 
 func valueToString(any *anypb.Any) (string, error) {

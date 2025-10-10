@@ -477,6 +477,120 @@ func (x *RegistryEntry) GetKeyName() string {
 	return ""
 }
 
+// ProllyNodeValues is a wrapper for a list of strings, used for leaf node values.
+type ProllyNodeValues struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProllyNodeValues) Reset() {
+	*x = ProllyNodeValues{}
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProllyNodeValues) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProllyNodeValues) ProtoMessage() {}
+
+func (x *ProllyNodeValues) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProllyNodeValues.ProtoReflect.Descriptor instead.
+func (*ProllyNodeValues) Descriptor() ([]byte, []int) {
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ProllyNodeValues) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+// ProllyNode represents a node in an immutable B-tree (Prolly-Tree).
+type ProllyNode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
+	Values        []*ProllyNodeValues    `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`     // For leaf nodes
+	Children      []string               `protobuf:"bytes,3,rep,name=children,proto3" json:"children,omitempty"` // For internal nodes (CIDs)
+	IsLeaf        bool                   `protobuf:"varint,4,opt,name=is_leaf,json=isLeaf,proto3" json:"is_leaf,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProllyNode) Reset() {
+	*x = ProllyNode{}
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProllyNode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProllyNode) ProtoMessage() {}
+
+func (x *ProllyNode) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProllyNode.ProtoReflect.Descriptor instead.
+func (*ProllyNode) Descriptor() ([]byte, []int) {
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ProllyNode) GetKeys() []string {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+func (x *ProllyNode) GetValues() []*ProllyNodeValues {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+func (x *ProllyNode) GetChildren() []string {
+	if x != nil {
+		return x.Children
+	}
+	return nil
+}
+
+func (x *ProllyNode) GetIsLeaf() bool {
+	if x != nil {
+		return x.IsLeaf
+	}
+	return false
+}
+
 var File_pkg_ipfsdb_proto_wwfsdb_proto protoreflect.FileDescriptor
 
 const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
@@ -521,7 +635,15 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\adb_name\x18\x01 \x01(\tR\x06dbName\x12\x1d\n" +
 	"\n" +
 	"program_id\x18\x02 \x01(\tR\tprogramId\x12\x19\n" +
-	"\bkey_name\x18\x03 \x01(\tR\akeyNameB.Z,github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/protob\x06proto3"
+	"\bkey_name\x18\x03 \x01(\tR\akeyName\"*\n" +
+	"\x10ProllyNodeValues\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"\x86\x01\n" +
+	"\n" +
+	"ProllyNode\x12\x12\n" +
+	"\x04keys\x18\x01 \x03(\tR\x04keys\x12/\n" +
+	"\x06values\x18\x02 \x03(\v2\x17.proto.ProllyNodeValuesR\x06values\x12\x1a\n" +
+	"\bchildren\x18\x03 \x03(\tR\bchildren\x12\x17\n" +
+	"\ais_leaf\x18\x04 \x01(\bR\x06isLeafB.Z,github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/protob\x06proto3"
 
 var (
 	file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescOnce sync.Once
@@ -535,37 +657,40 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP() []byte {
 	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData
 }
 
-var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
-	(*Column)(nil),        // 0: proto.Column
-	(*Schema)(nil),        // 1: proto.Schema
-	(*Row)(nil),           // 2: proto.Row
-	(*Page)(nil),          // 3: proto.Page
-	(*Table)(nil),         // 4: proto.Table
-	(*Database)(nil),      // 5: proto.Database
-	(*IndexNode)(nil),     // 6: proto.IndexNode
-	(*Index)(nil),         // 7: proto.Index
-	(*RegistryEntry)(nil), // 8: proto.RegistryEntry
-	nil,                   // 9: proto.Row.ValuesEntry
-	nil,                   // 10: proto.Table.IndexesEntry
-	nil,                   // 11: proto.Database.TablesEntry
-	nil,                   // 12: proto.Index.NodesEntry
-	(*anypb.Any)(nil),     // 13: google.protobuf.Any
+	(*Column)(nil),           // 0: proto.Column
+	(*Schema)(nil),           // 1: proto.Schema
+	(*Row)(nil),              // 2: proto.Row
+	(*Page)(nil),             // 3: proto.Page
+	(*Table)(nil),            // 4: proto.Table
+	(*Database)(nil),         // 5: proto.Database
+	(*IndexNode)(nil),        // 6: proto.IndexNode
+	(*Index)(nil),            // 7: proto.Index
+	(*RegistryEntry)(nil),    // 8: proto.RegistryEntry
+	(*ProllyNodeValues)(nil), // 9: proto.ProllyNodeValues
+	(*ProllyNode)(nil),       // 10: proto.ProllyNode
+	nil,                      // 11: proto.Row.ValuesEntry
+	nil,                      // 12: proto.Table.IndexesEntry
+	nil,                      // 13: proto.Database.TablesEntry
+	nil,                      // 14: proto.Index.NodesEntry
+	(*anypb.Any)(nil),        // 15: google.protobuf.Any
 }
 var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
 	0,  // 0: proto.Schema.columns:type_name -> proto.Column
-	9,  // 1: proto.Row.values:type_name -> proto.Row.ValuesEntry
+	11, // 1: proto.Row.values:type_name -> proto.Row.ValuesEntry
 	2,  // 2: proto.Page.rows:type_name -> proto.Row
-	10, // 3: proto.Table.indexes:type_name -> proto.Table.IndexesEntry
-	11, // 4: proto.Database.tables:type_name -> proto.Database.TablesEntry
-	12, // 5: proto.Index.nodes:type_name -> proto.Index.NodesEntry
-	13, // 6: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
-	6,  // 7: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
-	8,  // [8:8] is the sub-list for method output_type
-	8,  // [8:8] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	12, // 3: proto.Table.indexes:type_name -> proto.Table.IndexesEntry
+	13, // 4: proto.Database.tables:type_name -> proto.Database.TablesEntry
+	14, // 5: proto.Index.nodes:type_name -> proto.Index.NodesEntry
+	9,  // 6: proto.ProllyNode.values:type_name -> proto.ProllyNodeValues
+	15, // 7: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
+	6,  // 8: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
+	9,  // [9:9] is the sub-list for method output_type
+	9,  // [9:9] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_pkg_ipfsdb_proto_wwfsdb_proto_init() }
@@ -579,7 +704,7 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc), len(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

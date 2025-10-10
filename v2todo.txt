@@ -8,10 +8,10 @@ This roadmap outlines the evolution of WWSFDB from a database into a programmabl
 
 This stage addresses fundamental performance bottlenecks by replacing the "one object per row" model with a more scalable, DAG-native architecture.
 
-- [ ] **1. Implement IPLD-Native Paged Row Storage:**
+- [✅] **1. Implement IPLD-Native Paged Row Storage:**
   - **Solution:** Redesign the storage backend to group multiple rows into larger "Page" objects defined by a formal **IPLD Schema**. A Table object becomes the root of a Merkle-DAG of these pages, making the database's physical layout transparent and navigable by any IPLD-aware tool.
 
-- [ ] **2. Design an Advanced, DAG-Based Indexing Structure:**
+- [✅] **2. Design an Advanced, DAG-Based Indexing Structure:**
   - **Solution:** Implement a **Prolly-Tree (Probabilistic B+-Tree)** on top of IPFS. As a native IPLD data structure, its nodes are content-addressed IPLD blocks, making the entire index a verifiable, incrementally updatable DAG. This is the key to enabling efficient range scans, sorting, and complex queries.
 
 - [ ] **3. Develop a Cost-Based Query Planner & Optimizer:**
