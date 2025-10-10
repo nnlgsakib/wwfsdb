@@ -243,7 +243,7 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.State
 		}
 		return newDb, fmt.Sprintf("Table '%s' altered successfully.", s.Table), nil
 	case *ast.SelectStmt:
-		rows, err := QueryDB(sh, db, s.Columns, s.From, s.Where)
+		rows, err := QueryDB(sh, db, s)
 		if err != nil {
 			return nil, "", err
 		}

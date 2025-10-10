@@ -188,6 +188,94 @@ async function assertQueryResult(query, expected, message, { sessionID = null, p
     }
 }
 
+async function assertOrderedQueryResult(query, expected, message, { sessionID = null, privateKey = testState.privateKey } = {}) {
+    const res = await sendQuery(dbName, query, sessionID, privateKey);
+    if (res.error) {
+        console.log(`  ❌ ${message}`);
+        testState.failed++;
+        console.log(`     Query failed unexpectedly: ${query}`);
+        console.log(`     Error: ${res.error.message || res.error}`);
+        return;
+    }
+
+    const data = safeParseResult(res);
+
+    function orderedDeepEqual(a, b) {
+        if (a === b) return true;
+        if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false;
+        if (Array.isArray(a)) {
+            if (!Array.isArray(b) || a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+                if (!orderedDeepEqual(a[i], b[i])) return false;
+            }
+            return true;
+        }
+        const keysA = Object.keys(a).sort();
+        const keysB = Object.keys(b).sort();
+        if (keysA.join(',') !== keysB.join(',')) return false;
+        for (const key of keysA) {
+            if (!orderedDeepEqual(a[key], b[key])) return false;
+        }
+        return true;
+    }
+
+    const success = orderedDeepEqual(data, expected);
+
+    console.log(`  ${success ? '✅' : '❌'} ${message}`);
+
+    if (!success) {
+        testState.failed++;
+        console.log('     Expected:', JSON.stringify(expected, null, 2));
+        console.log('     Got:     ', JSON.stringify(data, null, 2));
+    } else {
+        testState.passed++;
+    }
+}
+
+async function assertOrderedQueryResult(query, expected, message, { sessionID = null, privateKey = testState.privateKey } = {}) {
+    const res = await sendQuery(dbName, query, sessionID, privateKey);
+    if (res.error) {
+        console.log(`  ❌ ${message}`);
+        testState.failed++;
+        console.log(`     Query failed unexpectedly: ${query}`);
+        console.log(`     Error: ${res.error.message || res.error}`);
+        return;
+    }
+
+    const data = safeParseResult(res);
+
+    function orderedDeepEqual(a, b) {
+        if (a === b) return true;
+        if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) return false;
+        if (Array.isArray(a)) {
+            if (!Array.isArray(b) || a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+                if (!orderedDeepEqual(a[i], b[i])) return false;
+            }
+            return true;
+        }
+        const keysA = Object.keys(a).sort();
+        const keysB = Object.keys(b).sort();
+        if (keysA.join(',') !== keysB.join(',')) return false;
+        for (const key of keysA) {
+            if (!orderedDeepEqual(a[key], b[key])) return false;
+        }
+        return true;
+    }
+
+    const success = orderedDeepEqual(data, expected);
+
+    console.log(`  ${success ? '✅' : '❌'} ${message}`);
+
+    if (!success) {
+        testState.failed++;
+        console.log('     Expected:', JSON.stringify(expected, null, 2));
+        console.log('     Got:     ', JSON.stringify(data, null, 2));
+    } else {
+        testState.passed++;
+    }
+}
+
 async function assertCommandSuccess(query, message, { sessionID = null, privateKey = testState.privateKey } = {}) {
     const res = await sendQuery(dbName, query, sessionID, privateKey);
     const data = safeParseResult(res);
@@ -581,6 +669,102 @@ async function runAlterTableTests() {
     );
 }
 
+async function runAdvancedQueryTests() {
+    console.log('\n--- 🧪 Running Advanced Query (ORDER BY, GROUP BY, Aggregates) Tests ---\n');
+
+    console.log('  --- Setting up data for advanced query tests ---');
+    await assertCommandSuccess(`CREATE TABLE sales (id INT, category VARCHAR(50), region VARCHAR(50), amount FLOAT, quantity INT);`, 'Creates a table for advanced query tests');
+    
+    const salesData = [
+        `(1, 'electronics', 'north', 120.50, 2)`,
+        `(2, 'books', 'south', 15.00, 3)`,
+        `(3, 'electronics', 'north', 75.00, 1)`,
+        `(4, 'clothing', 'west', 45.99, 5)`,
+        `(5, 'books', 'north', 25.00, 2)`,
+        `(6, 'clothing', 'south', 80.25, 2)`,
+        `(7, 'electronics', 'west', 250.00, 1)`,
+        `(8, 'books', 'south', 10.00, 1)`
+    ];
+
+    for (let i = 0; i < salesData.length; i++) {
+        await assertCommandSuccess(`INSERT INTO sales VALUES ${salesData[i]};`, `Inserts sales data row ${i + 1}`);
+    }
+
+    console.log('\n  --- ORDER BY Tests ---');
+    await assertOrderedQueryResult(
+        `SELECT id FROM sales ORDER BY amount DESC;`,
+        [{"id": 7}, {"id": 1}, {"id": 6}, {"id": 3}, {"id": 4}, {"id": 5}, {"id": 2}, {"id": 8}],
+        'Selects IDs ordered by amount descending'
+    );
+    await assertOrderedQueryResult(
+        `SELECT id FROM sales ORDER BY category ASC, amount DESC;`,
+        [{"id": 5}, {"id": 2}, {"id": 8}, {"id": 6}, {"id": 4}, {"id": 7}, {"id": 1}, {"id": 3}],
+        'Selects IDs ordered by category ascending, then amount descending'
+    );
+
+    console.log('\n  --- LIMIT / OFFSET Tests ---');
+    await assertOrderedQueryResult(
+        `SELECT id FROM sales ORDER BY amount DESC LIMIT 3;`,
+        [{"id": 7}, {"id": 1}, {"id": 6}],
+        'Selects top 3 sales by amount using LIMIT'
+    );
+    await assertOrderedQueryResult(
+        `SELECT id FROM sales ORDER BY amount DESC OFFSET 2;`,
+        [{"id": 6}, {"id": 3}, {"id": 4}, {"id": 5}, {"id": 2}, {"id": 8}],
+        'Selects sales by amount, skipping the top 2 using OFFSET'
+    );
+    await assertOrderedQueryResult(
+        `SELECT id FROM sales ORDER BY amount DESC LIMIT 2 OFFSET 3;`,
+        [{"id": 3}, {"id": 4}],
+        'Selects 2 sales by amount, skipping the top 3 (pagination)'
+    );
+
+    console.log('\n  --- Aggregate Function Tests (No GROUP BY) ---');
+    await assertQueryResult(`SELECT COUNT(*) FROM sales;`, [{"COUNT(*)": 8}], 'Selects COUNT(*) of all rows');
+    await assertQueryResult(`SELECT SUM(quantity) FROM sales;`, [{"SUM(quantity)": 17}], 'Selects SUM() of quantity');
+    await assertQueryResult(`SELECT AVG(amount) FROM sales;`, [{"AVG(amount)": 77.7175}], 'Selects AVG() of amount');
+    await assertQueryResult(`SELECT MIN(amount) FROM sales;`, [{"MIN(amount)": 10.00}], 'Selects MIN() of amount');
+    await assertQueryResult(`SELECT MAX(amount) FROM sales;`, [{"MAX(amount)": 250.00}], 'Selects MAX() of amount');
+
+    console.log('\n  --- GROUP BY Tests ---');
+    await assertOrderedQueryResult(
+        `SELECT category, COUNT(*) FROM sales GROUP BY category ORDER BY category ASC;`,
+        [
+            { "category": "books", "COUNT(*)": 3 },
+            { "category": "clothing", "COUNT(*)": 2 },
+            { "category": "electronics", "COUNT(*)": 3 }
+        ],
+        'Selects COUNT(*) grouped by category'
+    );
+    await assertOrderedQueryResult(
+        `SELECT region, SUM(amount) FROM sales GROUP BY region ORDER BY region ASC;`,
+        [
+            { "region": "north", "SUM(amount)": 220.5 },
+            { "region": "south", "SUM(amount)": 105.25 },
+            { "region": "west", "SUM(amount)": 295.99 }
+        ],
+        'Selects SUM(amount) grouped by region'
+    );
+    await assertOrderedQueryResult(
+        `SELECT category, AVG(quantity) FROM sales GROUP BY category ORDER BY category ASC;`,
+        [
+            { "category": "books", "AVG(quantity)": 2 },
+            { "category": "clothing", "AVG(quantity)": 3.5 },
+            { "category": "electronics", "AVG(quantity)": 1.3333333333333333 }
+        ],
+        'Selects AVG(quantity) grouped by category'
+    );
+    await assertOrderedQueryResult(
+        `SELECT region, MIN(amount), MAX(amount) FROM sales GROUP BY region ORDER BY region ASC;`,
+        [
+            { "region": "north", "MIN(amount)": 25.00, "MAX(amount)": 120.50 },
+            { "region": "south", "MIN(amount)": 10.00, "MAX(amount)": 80.25 },
+            { "region": "west", "MIN(amount)": 45.99, "MAX(amount)": 250.00 }
+        ],
+        'Selects MIN() and MAX() grouped by region'
+    );
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -594,6 +778,7 @@ async function main() {
     await runTransactionTests();
     await runAlterTableTests();
     await runJoinTests();
+    await runAdvancedQueryTests();
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

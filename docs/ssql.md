@@ -172,18 +172,31 @@ Retrieves data from one or more tables.
 
 **Syntax:**
 ```sql
-SELECT column_1, table_2.column_2, ...
+SELECT column_1, AGG_FUNC(column_2), ...
 FROM table_1
 [JOIN table_2 ON condition]
-[WHERE condition];
+[WHERE condition]
+[GROUP BY column_1, ...]
+[ORDER BY column_1 [ASC|DESC], ...]
+[LIMIT number]
+[OFFSET number];
 ```
 
 **Clauses:**
 
-- **`SELECT`**: Can be `*` (all columns), `table.*` (all columns from a specific table), or a comma-separated list of columns (`col1, col2, ...`).
+- **`SELECT`**: Can be `*` (all columns), `table.*` (all columns from a specific table), or a comma-separated list of columns (`col1, col2, ...`). Also supports aggregate functions:
+  - `COUNT(* | column)`: Counts rows or non-null values.
+  - `SUM(column)`: Calculates the sum of a numeric column.
+  - `AVG(column)`: Calculates the average of a numeric column.
+  - `MIN(column)`: Finds the minimum value in a column.
+  - `MAX(column)`: Finds the maximum value in a column.
 - **`FROM`**: Specifies the primary table.
 - **`JOIN`**: Supports `INNER JOIN` and `LEFT JOIN` to combine rows from two tables based on a related column.
 - **`WHERE`**: Filters results based on a condition. Supported operators include: `=`, `!=`, `>`, `<`, `>=`, `<=`, `AND`, `OR`, `LIKE`, `IN`.
+- **`GROUP BY`**: Groups rows that have the same values in specified columns into summary rows. It is almost always used with aggregate functions.
+- **`ORDER BY`**: Sorts the result set based on one or more columns, in ascending (`ASC`, default) or descending (`DESC`) order.
+- **`LIMIT`**: Constrains the number of rows returned by the query.
+- **`OFFSET`**: Skips a specified number of rows before beginning to return rows from the query.
 
 **Examples:**
 
@@ -191,13 +204,30 @@ FROM table_1
 -- Select specific columns with a filter
 SELECT id, name FROM users WHERE is_verified = true;
 
--- Select all columns from a table
-SELECT * FROM users;
+-- Select all columns from a table, sorted by name
+SELECT * FROM users ORDER BY name DESC;
 
 -- Select with a JOIN
 SELECT users.name, orders.order_id
 FROM users
 LEFT JOIN orders ON users.id = orders.user_id;
+
+-- Paginate through results
+SELECT id, name FROM users
+ORDER BY id
+LIMIT 10 OFFSET 20; -- Returns rows 21-30
+
+-- Count users by country and show the top 5
+SELECT country, COUNT(*) AS user_count
+FROM users
+GROUP BY country
+ORDER BY user_count DESC
+LIMIT 5;
+
+-- Calculate the average, min, and max order amount per user
+SELECT user_id, AVG(amount), MIN(amount), MAX(amount)
+FROM orders
+GROUP BY user_id;
 ```
 
 ---

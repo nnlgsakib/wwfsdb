@@ -588,6 +588,26 @@ func (p *Parser) parseSelectStatement() *ast.SelectStmt {
 		stmt.Where = p.parseWhereClause()
 	}
 
+	if p.peekTokenIs(lexer.GROUP) {
+		p.nextToken()
+		stmt.GroupBy = p.parseGroupByClause()
+	}
+
+	if p.peekTokenIs(lexer.ORDER) {
+		p.nextToken()
+		stmt.OrderBy = p.parseOrderByClause()
+	}
+
+	if p.peekTokenIs(lexer.LIMIT) {
+		p.nextToken()
+		stmt.Limit = p.parseLimitClause()
+	}
+
+	if p.peekTokenIs(lexer.OFFSET) {
+		p.nextToken()
+		stmt.Offset = p.parseOffsetClause()
+	}
+
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
 	}
@@ -639,53 +659,133 @@ func (p *Parser) parseFromClause() ast.FromClause {
 	return left
 }
 
-func (p *Parser) parseSelectList() []ast.SelectColumn {
-	list := []ast.SelectColumn{}
+func (p *Parser) parseSelectList() []ast.SelectExpr {
+	list := []ast.SelectExpr{}
 
 	if p.peekTokenIs(lexer.ASTERISK) {
 		p.nextToken()
-		list = append(list, ast.SelectColumn{Name: "*"})
+		list = append(list, &ast.StarExpr{})
 		return list
 	}
 
 	p.nextToken()
 
-	// Helper to parse a single select column (e.g., id, users.id, users.*)
-	parseCol := func() ast.SelectColumn {
-		col := ast.SelectColumn{}
-		if p.curToken.Type != lexer.IDENT {
-			p.errors = append(p.errors, "expected identifier in column list")
-			return col
+	// Helper to parse a single select expression
+	parseExpr := func() ast.SelectExpr {
+		isAggregate := p.curToken.Type == lexer.COUNT || p.curToken.Type == lexer.SUM || p.curToken.Type == lexer.AVG || p.curToken.Type == lexer.MIN || p.curToken.Type == lexer.MAX
+		if (isAggregate || p.curToken.Type == lexer.IDENT) && p.peekTokenIs(lexer.LPAREN) {
+			return p.parseAggregateFunction()
 		}
 
-		// Check for table.* syntax
+		// Standard column identifier (e.g., id, users.id, users.*)
+		col := &ast.ColumnExpr{}
+		if p.curToken.Type != lexer.IDENT {
+			p.errors = append(p.errors, "expected identifier in column list")
+			return nil
+		}
+
 		if p.peekTokenIs(lexer.DOT) {
 			tableQualifier := p.curToken.Literal
 			p.nextToken() // consume table name
 			p.nextToken() // consume .
 
 			if p.curTokenIs(lexer.ASTERISK) {
-				return ast.SelectColumn{Name: "*", TableQualifier: tableQualifier}
+				// This is a special case of ColumnExpr for table.*
+				col.Name = "*"
+				col.TableQualifier = tableQualifier
 			} else if p.curTokenIs(lexer.IDENT) {
-				return ast.SelectColumn{Name: p.curToken.Literal, TableQualifier: tableQualifier}
+				col.Name = p.curToken.Literal
+				col.TableQualifier = tableQualifier
 			} else {
 				p.errors = append(p.errors, "expected '*' or identifier after 'table.'")
-				return col
+				return nil
 			}
 		} else {
-			return ast.SelectColumn{Name: p.curToken.Literal}
+			col.Name = p.curToken.Literal
 		}
+		return col
 	}
 
-	list = append(list, parseCol())
+	list = append(list, parseExpr())
 
 	for p.peekTokenIs(lexer.COMMA) {
 		p.nextToken()
 		p.nextToken()
-		list = append(list, parseCol())
+		list = append(list, parseExpr())
 	}
 
 	return list
+}
+
+func (p *Parser) parseAggregateFunction() ast.SelectExpr {
+	agg := &ast.AggregateFunctionExpr{Name: p.curToken.Literal}
+
+	if !p.expectPeek(lexer.LPAREN) {
+		return nil
+	}
+
+	p.nextToken()
+
+	if p.curTokenIs(lexer.ASTERISK) {
+		agg.Argument = &ast.Identifier{Name: "*"}
+	} else {
+		agg.Argument = p.parseExpression(LOWEST)
+	}
+
+	if !p.expectPeek(lexer.RPAREN) {
+		return nil
+	}
+
+	return agg
+}
+
+func (p *Parser) parseGroupByClause() []ast.Expression {
+	if !p.expectPeek(lexer.BY) {
+		return nil
+	}
+	return p.parseExpressionList(lexer.ORDER, lexer.LIMIT, lexer.OFFSET, lexer.SEMICOLON)
+}
+
+func (p *Parser) parseOrderByClause() []*ast.OrderByExpression {
+	if !p.expectPeek(lexer.BY) {
+		return nil
+	}
+
+	list := []*ast.OrderByExpression{}
+
+	parseOrderByExpr := func() *ast.OrderByExpression {
+		orderByExpr := &ast.OrderByExpression{}
+		orderByExpr.Column = p.parseExpression(LOWEST)
+
+		if p.peekTokenIs(lexer.ASC) || p.peekTokenIs(lexer.DESC) {
+			p.nextToken()
+			orderByExpr.Direction = p.curToken.Literal
+		} else {
+			orderByExpr.Direction = "ASC" // Default direction
+		}
+		return orderByExpr
+	}
+
+	p.nextToken()
+	list = append(list, parseOrderByExpr())
+
+	for p.peekTokenIs(lexer.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		list = append(list, parseOrderByExpr())
+	}
+
+	return list
+}
+
+func (p *Parser) parseLimitClause() ast.Expression {
+	p.nextToken()
+	return p.parseExpression(LOWEST)
+}
+
+func (p *Parser) parseOffsetClause() ast.Expression {
+	p.nextToken()
+	return p.parseExpression(LOWEST)
 }
 
 func (p *Parser) parseWhereClause() ast.Expression {
@@ -710,7 +810,7 @@ func (p *Parser) parseInsertStatement() *ast.InsertStmt {
 		return nil
 	}
 
-	stmt.Values = p.parseExpressionList(lexer.RPAREN)
+	stmt.Values = p.parseValueExpressionList(lexer.RPAREN)
 
 	if p.peekTokenIs(lexer.SEMICOLON) {
 		p.nextToken()
@@ -719,7 +819,7 @@ func (p *Parser) parseInsertStatement() *ast.InsertStmt {
 	return stmt
 }
 
-func (p *Parser) parseExpressionList(end lexer.TokenType) []ast.Expression {
+func (p *Parser) parseValueExpressionList(end lexer.TokenType) []ast.Expression {
 	list := []ast.Expression{}
 
 	if p.peekTokenIs(end) {
@@ -738,6 +838,35 @@ func (p *Parser) parseExpressionList(end lexer.TokenType) []ast.Expression {
 
 	if !p.expectPeek(end) {
 		return nil
+	}
+
+	return list
+}
+
+// A more generic version for comma-separated expressions ending with a keyword
+func (p *Parser) parseExpressionList(terminators ...lexer.TokenType) []ast.Expression {
+	list := []ast.Expression{}
+
+	isTerminator := func(tt lexer.TokenType) bool {
+		for _, t := range terminators {
+			if t == tt {
+				return true
+			}
+		}
+		return false
+	}
+
+	if isTerminator(p.peekToken.Type) {
+		return list
+	}
+
+	p.nextToken()
+	list = append(list, p.parseExpression(LOWEST))
+
+	for p.peekTokenIs(lexer.COMMA) {
+		p.nextToken()
+		p.nextToken()
+		list = append(list, p.parseExpression(LOWEST))
 	}
 
 	return list

@@ -69,6 +69,18 @@ const (
 	JOIN     = "JOIN"
 	INNER    = "INNER"
 	LEFT     = "LEFT"
+	ORDER    = "ORDER"
+	BY       = "BY"
+	ASC      = "ASC"
+	DESC     = "DESC"
+	LIMIT    = "LIMIT"
+	OFFSET   = "OFFSET"
+	GROUP    = "GROUP"
+	COUNT    = "COUNT"
+	SUM      = "SUM"
+	AVG      = "AVG"
+	MIN      = "MIN"
+	MAX      = "MAX"
 )
 
 var keywords = map[string]TokenType{
@@ -104,6 +116,18 @@ var keywords = map[string]TokenType{
 	"JOIN":     JOIN,
 	"INNER":    INNER,
 	"LEFT":     LEFT,
+	"ORDER":    ORDER,
+	"BY":       BY,
+	"ASC":      ASC,
+	"DESC":     DESC,
+	"LIMIT":    LIMIT,
+	"OFFSET":   OFFSET,
+	"GROUP":    GROUP,
+	"COUNT":    COUNT,
+	"SUM":      SUM,
+	"AVG":      AVG,
+	"MIN":      MIN,
+	"MAX":      MAX,
 }
 
 func LookupIdent(ident string) TokenType {

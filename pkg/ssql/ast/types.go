@@ -334,7 +334,19 @@ type Node interface{ isNode() }
 
 
 
+
+
+
+
+
+
+
+
 type Statement interface {
+
+
+
+
 
 
 
@@ -342,7 +354,15 @@ type Statement interface {
 
 
 
+
+
+
+
 	isStatement()
+
+
+
+
 
 
 
@@ -354,7 +374,6 @@ type Statement interface {
 
 
 
-// SelectColumn represents a single column in a SELECT clause.
 
 
 
@@ -362,7 +381,60 @@ type Statement interface {
 
 
 
-type SelectColumn struct {
+
+// SelectExpr represents an item in a SELECT clause, which can be a column, a wildcard, or a function call.
+
+
+
+
+
+
+
+type SelectExpr interface {
+
+
+
+
+
+
+
+	isSelectExpr()
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ColumnExpr represents a standard column selection, e.g., `id` or `users.name`.
+
+
+
+
+
+
+
+type ColumnExpr struct {
+
+
+
+
 
 
 
@@ -370,11 +442,181 @@ type SelectColumn struct {
 
 
 
+
+
+
+
 	TableQualifier string
 
 
 
+
+
+
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// StarExpr represents a `*` selection.
+
+
+
+
+
+
+
+type StarExpr struct{}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// AggregateFunctionExpr represents an aggregate function call, e.g., `COUNT(*)` or `SUM(price)`.
+
+
+
+
+
+
+
+type AggregateFunctionExpr struct {
+
+
+
+
+
+
+
+	Name     string
+
+
+
+
+
+
+
+	Argument Expression // Can be an Identifier or a StarExpr (represented as an Identifier with Name: "*")
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+func (ColumnExpr) isSelectExpr()            {}
+
+
+
+
+
+
+
+func (StarExpr) isSelectExpr()              {}
+
+
+
+
+
+
+
+func (AggregateFunctionExpr) isSelectExpr() {}
+
+func (AggregateFunctionExpr) isExpression() {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// OrderByExpression represents a column and direction in an ORDER BY clause.
+
+
+
+
+
+
+
+type OrderByExpression struct {
+
+
+
+
+
+
+
+	Column    Expression // e.g., an Identifier
+
+
+
+
+
+
+
+	Direction string     // "ASC" or "DESC"
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -390,7 +632,19 @@ type SelectColumn struct {
 
 
 
+
+
+
+
+
+
+
+
 type (
+
+
+
+
 
 
 
@@ -398,7 +652,15 @@ type (
 
 
 
+
+
+
+
 	CreateTableStmt    struct{ Name string; Schema Schema }
+
+
+
+
 
 
 
@@ -406,7 +668,15 @@ type (
 
 
 
+
+
+
+
 	DropTableStmt      struct{ Name string }
+
+
+
+
 
 
 
@@ -414,7 +684,15 @@ type (
 
 
 
-		Columns []SelectColumn // New field for selected columns
+
+
+
+
+		Columns []SelectExpr
+
+
+
+
 
 
 
@@ -422,7 +700,47 @@ type (
 
 
 
+
+
+
+
 		Where   Expression
+
+
+
+
+
+
+
+		GroupBy []Expression
+
+
+
+
+
+
+
+		OrderBy []*OrderByExpression
+
+
+
+
+
+
+
+		Limit   Expression
+
+
+
+
+
+
+
+		Offset  Expression
+
+
+
+
 
 
 
@@ -430,7 +748,15 @@ type (
 
 
 
+
+
+
+
 	InsertStmt struct{ Table string; Values []Expression }
+
+
+
+
 
 
 
@@ -438,7 +764,15 @@ type (
 
 
 
+
+
+
+
 	DeleteStmt struct{ Table string; Where Expression }
+
+
+
+
 
 
 
@@ -446,7 +780,15 @@ type (
 
 
 
+
+
+
+
 	BeginStmt    struct{}
+
+
+
+
 
 
 
@@ -454,7 +796,15 @@ type (
 
 
 
+
+
+
+
 	RollbackStmt struct{}
+
+
+
+
 
 
 
