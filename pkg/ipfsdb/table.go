@@ -62,7 +62,7 @@ func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, schema *ssql.
 	// 3. Create a new table
 	table := &pb.Table{
 		SchemaCid: schemaCID,
-		Rows:      []string{},
+		PageCids:  []string{},
 		Indexes:   make(map[string]string),
 	}
 

@@ -60,7 +60,7 @@ func QueryDB(sh *shell.Shell, db *pb.Database, columns []ast.SelectColumn, from 
 func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([]CombinedRow, error) {
 	switch f := from.(type) {
 	case *ast.TableIdentifier:
-		// Base case: load all rows from a single table.
+		// Base case: load all rows from a single table by iterating through its pages.
 		tableCID, ok := db.Tables[f.Name]
 		if !ok {
 			return nil, fmt.Errorf("table %s not found in database", f.Name)
@@ -71,14 +71,16 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from ast.FromClause) ([
 		}
 
 		var results []CombinedRow
-		for _, rowCID := range table.Rows {
-			row, err := LoadRow(sh, rowCID)
+		for _, pageCID := range table.PageCids {
+			page, err := LoadPage(sh, pageCID)
 			if err != nil {
 				// It's better to log this error than to fail the whole query
-				fmt.Printf("Warning: failed to load row %s: %v\n", rowCID, err)
+				fmt.Printf("Warning: failed to load page %s: %v\n", pageCID, err)
 				continue
 			}
-			results = append(results, CombinedRow{f.Name: row})
+			for _, row := range page.Rows {
+				results = append(results, CombinedRow{f.Name: row})
+			}
 		}
 		return results, nil
 

@@ -166,11 +166,56 @@ func (x *Row) GetValues() map[string]*anypb.Any {
 	return nil
 }
 
+// Page represents a single page of data, containing multiple rows.
+type Page struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rows          []*Row                 `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Page) Reset() {
+	*x = Page{}
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Page) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Page) ProtoMessage() {}
+
+func (x *Page) ProtoReflect() protoreflect.Message {
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Page.ProtoReflect.Descriptor instead.
+func (*Page) Descriptor() ([]byte, []int) {
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Page) GetRows() []*Row {
+	if x != nil {
+		return x.Rows
+	}
+	return nil
+}
+
 // Table represents a table in the database.
 type Table struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SchemaCid     string                 `protobuf:"bytes,1,opt,name=schema_cid,json=schemaCid,proto3" json:"schema_cid,omitempty"`
-	Rows          []string               `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`                                                                                 // CIDs of Row objects
+	PageCids      []string               `protobuf:"bytes,2,rep,name=page_cids,json=pageCids,proto3" json:"page_cids,omitempty"`                                                         // CIDs of Page objects
 	Indexes       map[string]string      `protobuf:"bytes,3,rep,name=indexes,proto3" json:"indexes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // map[column_name]index_cid
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -178,7 +223,7 @@ type Table struct {
 
 func (x *Table) Reset() {
 	*x = Table{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +235,7 @@ func (x *Table) String() string {
 func (*Table) ProtoMessage() {}
 
 func (x *Table) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +248,7 @@ func (x *Table) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Table.ProtoReflect.Descriptor instead.
 func (*Table) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{3}
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Table) GetSchemaCid() string {
@@ -213,9 +258,9 @@ func (x *Table) GetSchemaCid() string {
 	return ""
 }
 
-func (x *Table) GetRows() []string {
+func (x *Table) GetPageCids() []string {
 	if x != nil {
-		return x.Rows
+		return x.PageCids
 	}
 	return nil
 }
@@ -238,7 +283,7 @@ type Database struct {
 
 func (x *Database) Reset() {
 	*x = Database{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -250,7 +295,7 @@ func (x *Database) String() string {
 func (*Database) ProtoMessage() {}
 
 func (x *Database) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -263,7 +308,7 @@ func (x *Database) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Database.ProtoReflect.Descriptor instead.
 func (*Database) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{4}
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Database) GetTables() map[string]string {
@@ -290,7 +335,7 @@ type IndexNode struct {
 
 func (x *IndexNode) Reset() {
 	*x = IndexNode{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -302,7 +347,7 @@ func (x *IndexNode) String() string {
 func (*IndexNode) ProtoMessage() {}
 
 func (x *IndexNode) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -315,7 +360,7 @@ func (x *IndexNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexNode.ProtoReflect.Descriptor instead.
 func (*IndexNode) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{5}
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *IndexNode) GetCids() []string {
@@ -336,7 +381,7 @@ type Index struct {
 
 func (x *Index) Reset() {
 	*x = Index{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -348,7 +393,7 @@ func (x *Index) String() string {
 func (*Index) ProtoMessage() {}
 
 func (x *Index) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -361,7 +406,7 @@ func (x *Index) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Index.ProtoReflect.Descriptor instead.
 func (*Index) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{6}
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Index) GetNodes() map[string]*IndexNode {
@@ -383,7 +428,7 @@ type RegistryEntry struct {
 
 func (x *RegistryEntry) Reset() {
 	*x = RegistryEntry{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -395,7 +440,7 @@ func (x *RegistryEntry) String() string {
 func (*RegistryEntry) ProtoMessage() {}
 
 func (x *RegistryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
+	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -408,7 +453,7 @@ func (x *RegistryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistryEntry.ProtoReflect.Descriptor instead.
 func (*RegistryEntry) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{7}
+	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RegistryEntry) GetDbName() string {
@@ -446,11 +491,14 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\x06values\x18\x01 \x03(\v2\x16.proto.Row.ValuesEntryR\x06values\x1aO\n" +
 	"\vValuesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12*\n" +
-	"\x05value\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\x05value:\x028\x01\"\xab\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x14.google.protobuf.AnyR\x05value:\x028\x01\"&\n" +
+	"\x04Page\x12\x1e\n" +
+	"\x04rows\x18\x01 \x03(\v2\n" +
+	".proto.RowR\x04rows\"\xb4\x01\n" +
 	"\x05Table\x12\x1d\n" +
 	"\n" +
-	"schema_cid\x18\x01 \x01(\tR\tschemaCid\x12\x12\n" +
-	"\x04rows\x18\x02 \x03(\tR\x04rows\x123\n" +
+	"schema_cid\x18\x01 \x01(\tR\tschemaCid\x12\x1b\n" +
+	"\tpage_cids\x18\x02 \x03(\tR\bpageCids\x123\n" +
 	"\aindexes\x18\x03 \x03(\v2\x19.proto.Table.IndexesEntryR\aindexes\x1a:\n" +
 	"\fIndexesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -487,35 +535,37 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP() []byte {
 	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData
 }
 
-var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
 	(*Column)(nil),        // 0: proto.Column
 	(*Schema)(nil),        // 1: proto.Schema
 	(*Row)(nil),           // 2: proto.Row
-	(*Table)(nil),         // 3: proto.Table
-	(*Database)(nil),      // 4: proto.Database
-	(*IndexNode)(nil),     // 5: proto.IndexNode
-	(*Index)(nil),         // 6: proto.Index
-	(*RegistryEntry)(nil), // 7: proto.RegistryEntry
-	nil,                   // 8: proto.Row.ValuesEntry
-	nil,                   // 9: proto.Table.IndexesEntry
-	nil,                   // 10: proto.Database.TablesEntry
-	nil,                   // 11: proto.Index.NodesEntry
-	(*anypb.Any)(nil),     // 12: google.protobuf.Any
+	(*Page)(nil),          // 3: proto.Page
+	(*Table)(nil),         // 4: proto.Table
+	(*Database)(nil),      // 5: proto.Database
+	(*IndexNode)(nil),     // 6: proto.IndexNode
+	(*Index)(nil),         // 7: proto.Index
+	(*RegistryEntry)(nil), // 8: proto.RegistryEntry
+	nil,                   // 9: proto.Row.ValuesEntry
+	nil,                   // 10: proto.Table.IndexesEntry
+	nil,                   // 11: proto.Database.TablesEntry
+	nil,                   // 12: proto.Index.NodesEntry
+	(*anypb.Any)(nil),     // 13: google.protobuf.Any
 }
 var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
 	0,  // 0: proto.Schema.columns:type_name -> proto.Column
-	8,  // 1: proto.Row.values:type_name -> proto.Row.ValuesEntry
-	9,  // 2: proto.Table.indexes:type_name -> proto.Table.IndexesEntry
-	10, // 3: proto.Database.tables:type_name -> proto.Database.TablesEntry
-	11, // 4: proto.Index.nodes:type_name -> proto.Index.NodesEntry
-	12, // 5: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
-	5,  // 6: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
-	7,  // [7:7] is the sub-list for method output_type
-	7,  // [7:7] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	9,  // 1: proto.Row.values:type_name -> proto.Row.ValuesEntry
+	2,  // 2: proto.Page.rows:type_name -> proto.Row
+	10, // 3: proto.Table.indexes:type_name -> proto.Table.IndexesEntry
+	11, // 4: proto.Database.tables:type_name -> proto.Database.TablesEntry
+	12, // 5: proto.Index.nodes:type_name -> proto.Index.NodesEntry
+	13, // 6: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
+	6,  // 7: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
+	8,  // [8:8] is the sub-list for method output_type
+	8,  // [8:8] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_pkg_ipfsdb_proto_wwfsdb_proto_init() }
@@ -529,7 +579,7 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc), len(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

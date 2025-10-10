@@ -23,10 +23,15 @@ message Row {
   map<string, google.protobuf.Any> values = 1;
 }
 
+// Page represents a single page of data, containing multiple rows.
+message Page {
+  repeated Row rows = 1;
+}
+
 // Table represents a table in the database.
 message Table {
   string schema_cid = 1;
-  repeated string rows = 2;       // CIDs of Row objects
+  repeated string page_cids = 2;   // CIDs of Page objects
   map<string, string> indexes = 3; // map[column_name]index_cid
 }
 
