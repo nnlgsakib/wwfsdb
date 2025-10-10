@@ -96,7 +96,7 @@ This final stage is about making the platform easy to use, manage, and build upo
 - [ ] **1. Add a Native GraphQL API Layer:**
   - **Problem:** JSON-RPC is not ideal for modern front-end development.
   - **Solution:** Automatically generate a full-featured **GraphQL API** from the database's schemas. This API will support queries, mutations, and real-time subscriptions, providing a superior developer experience.
-
+  - **Don't alter exisitng rpc support both GraphQL and rpc should work togather 
 - [✅] **2. Create Advanced Data Import/Export Tooling (CAR & DAG-JSON):**
   - **Solution:** Add `wwfsdb data <import|export>` to support bulk loading and exporting. Add flags to export tables or entire databases as **`dag-json`** or into a **CAR (Content Addressable aRchive)** file for interoperability with the broader IPFS/IPLD ecosystem.
 
