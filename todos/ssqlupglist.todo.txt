@@ -2,19 +2,19 @@
 
 ## Phase 0: Whitespace, Indentation, and Multiline Handling
 
-- [ ] Add position tracking (line, column) to lexer tokens
-- [ ] Preserve whitespace information in tokens for formatting
-- [ ] Add support for parsing multiline SQL statements properly
-- [ ] Add indentation tracking for formatted output
-- [ ] Store comment positions to maintain their placement in source
-- [ ] Add proper handling of SQL statement termination (not just semicolons)
-- [ ] Modify lexer to optionally preserve formatting tokens
-- [ ] Add dedicated comment token types and handling
-- [ ] Modify AST nodes to support comments as part of the syntax tree
-- [ ] Add support for comments within SQL statements (not just skipping them)
-- [ ] Add tests for multiline SQL parsing
-- [ ] Add tests for various indentation styles
-- [ ] Add tests for preserving comments in correct positions
+- [x] Add position tracking (line, column) to lexer tokens
+- [x] Preserve whitespace information in tokens for formatting
+- [x] Add support for parsing multiline SQL statements properly
+- [x] Add indentation tracking for formatted output
+- [x] Store comment positions to maintain their placement in source
+- [x] Add proper handling of SQL statement termination (not just semicolons)
+- [x] Modify lexer to optionally preserve formatting tokens
+- [x] Add dedicated comment token types and handling
+- [x] Modify AST nodes to support comments as part of the syntax tree
+- [x] Add support for comments within SQL statements (not just skipping them)
+- [x] Add tests for multiline SQL parsing
+- [x] Add tests for various indentation styles
+- [x] Add tests for preserving comments in correct positions
 
 ## Phase 1: Lexer Improvements
 

@@ -963,13 +963,37 @@ func (p *Parser) ParseProgram() []ast.Statement {
 	var statements []ast.Statement
 
 	for !p.curTokenIs(lexer.EOF) {
+		// Skip any whitespace or comment tokens that might be between statements
+		for p.curTokenIs(lexer.SPACE) || p.curTokenIs(lexer.TAB) || p.curTokenIs(lexer.NEWLINE) || 
+		      p.curTokenIs(lexer.WHITESPACE) || p.curTokenIs(lexer.COMMENT_SINGLE) || p.curTokenIs(lexer.COMMENT_MULTI) {
+			p.nextToken()
+		}
+		
+		if p.curTokenIs(lexer.EOF) {
+			break
+		}
+		
 		stmt := p.ParseStatement()
 		if stmt != nil {
 			statements = append(statements, stmt)
 		}
-		p.nextToken()
+		
+		// Skip any tokens after the statement until we reach the next statement
+		for !p.curTokenIs(lexer.EOF) && !p.isStatementSeparator() {
+			p.nextToken()
+		}
+		
+		// Move past the separator if it exists
+		if p.isStatementSeparator() {
+			p.nextToken()
+		}
 	}
 	return statements
+}
+
+// isStatementSeparator checks if the current token is a statement separator
+func (p *Parser) isStatementSeparator() bool {
+	return p.curTokenIs(lexer.SEMICOLON) || p.curTokenIs(lexer.EOF)
 }
 
 // parse is the main entry point for parsing a SQL string.
