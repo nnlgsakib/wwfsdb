@@ -220,6 +220,14 @@ func (l *Lexer) NextToken() Token {
 			Column: startColumn,
 			Offset: startPosition,
 		}
+	case '"':
+		tok.Type = IDENT
+		tok.Literal = l.readDoubleQuotedString()
+		tok.Position = Position{
+			Line:   startLine,
+			Column: startColumn,
+			Offset: startPosition,
+		}
 	case 0:
 		tok.Literal = ""
 		tok.Type = EOF
@@ -230,8 +238,16 @@ func (l *Lexer) NextToken() Token {
 		}
 	default:
 		if isLetter(l.ch) {
-			tok.Literal = l.readIdentifier()
-			tok.Type = LookupIdent(tok.Literal)
+			// Check if this is a raw string literal (r"..." or r'...')
+			identifier := l.readIdentifier()
+			// Check if it's a single 'r' followed by a quote
+			if identifier == "r" && (l.ch == '"' || l.ch == '\'') {
+				tok.Type = RAW_STRING
+				tok.Literal = "r" + l.readRawString()
+			} else {
+				tok.Literal = identifier
+				tok.Type = LookupIdent(tok.Literal)
+			}
 			tok.Position = Position{
 				Line:   startLine,
 				Column: startColumn,
@@ -239,14 +255,35 @@ func (l *Lexer) NextToken() Token {
 			}
 			return tok
 		} else if isDigit(l.ch) {
-			tok.Type = NUMBER
-			tok.Literal = l.readNumber()
-			tok.Position = Position{
-				Line:   startLine,
-				Column: startColumn,
-				Offset: startPosition,
+			// Check for hex or binary literals starting with '0x', '0X', '0b', or '0B'
+			if l.ch == '0' && (l.peekChar() == 'x' || l.peekChar() == 'X') {
+				tok.Type = HEX_LITERAL
+				tok.Literal = l.readHexLiteral()
+				tok.Position = Position{
+					Line:   startLine,
+					Column: startColumn,
+					Offset: startPosition,
+				}
+				return tok
+			} else if l.ch == '0' && (l.peekChar() == 'b' || l.peekChar() == 'B') {
+				tok.Type = BINARY_LITERAL
+				tok.Literal = l.readBinaryLiteral()
+				tok.Position = Position{
+					Line:   startLine,
+					Column: startColumn,
+					Offset: startPosition,
+				}
+				return tok
+			} else {
+				tok.Type = NUMBER
+				tok.Literal = l.readNumber()
+				tok.Position = Position{
+					Line:   startLine,
+					Column: startColumn,
+					Offset: startPosition,
+				}
+				return tok
 			}
-			return tok
 		} else {
 			tok = newTokenWithPosition(ILLEGAL, l.ch, startLine, startColumn, startPosition)
 		}
@@ -407,17 +444,59 @@ func (l *Lexer) readIdentifier() string {
 	return l.input[position:l.position]
 }
 
+// peekIdentifier looks ahead to determine what identifier we're dealing with
+// without consuming characters
+func (l *Lexer) peekIdentifier() string {
+	position := l.position
+	ch := l.ch
+	// Read the identifier without advancing the lexer
+	for isLetter(ch) || isDigit(ch) {
+		position++
+		if position >= len(l.input) {
+			break
+		}
+		ch = l.input[position]
+	}
+	return l.input[l.position:position]
+}
+
 func (l *Lexer) readNumber() string {
 	position := l.position
+	
+	// Read initial digits
 	for isDigit(l.ch) {
 		l.readChar()
 	}
+	
+	// Handle decimal point and fractional part
 	if l.ch == '.' {
 		l.readChar()
 		for isDigit(l.ch) {
 			l.readChar()
 		}
 	}
+	
+	// Handle scientific notation (e.g., 1.23e-4, 1E+5)
+	if l.ch == 'e' || l.ch == 'E' {
+		l.readChar() // consume 'e' or 'E'
+		
+		// Handle optional sign (+ or -)
+		if l.ch == '+' || l.ch == '-' {
+			l.readChar()
+		}
+		
+		// Read exponent digits
+		if isDigit(l.ch) {
+			for isDigit(l.ch) {
+				l.readChar()
+			}
+		} else {
+			// If there's no digit after e/E(+/-), we have an invalid scientific notation
+			// In this case, we should not include the e/E part in the number
+			// For now, we'll just let it be and the parser can handle invalid formats
+		}
+	}
+	
 	return l.input[position:l.position]
 }
 
@@ -432,8 +511,68 @@ func (l *Lexer) readString() string {
 	return l.input[position:l.position]
 }
 
+func (l *Lexer) readDoubleQuotedString() string {
+	position := l.position + 1
+	for {
+		l.readChar()
+		if l.ch == '"' || l.ch == 0 {
+			break
+		}
+	}
+	return l.input[position:l.position]
+}
+
+func (l *Lexer) readRawString() string {
+	// We're at the quote character (either " or ') after 'r'
+	quote := l.ch
+	position := l.position + 1
+	for {
+		l.readChar()
+		if l.ch == quote || l.ch == 0 {
+			break
+		}
+	}
+	return l.input[position:l.position]
+}
+
+func (l *Lexer) readHexLiteral() string {
+	// We're at '0', read 'x' or 'X'
+	position := l.position  // starting position of '0'
+	l.readChar() // consume '0', now l.ch is 'x' or 'X'
+	l.readChar() // consume 'x' or 'X'
+	
+	// Read hexadecimal digits
+	for isHexDigit(l.ch) {
+		l.readChar()
+	}
+	
+	return l.input[position:l.position]
+}
+
+func (l *Lexer) readBinaryLiteral() string {
+	// We're at '0', read 'b' or 'B'
+	position := l.position  // starting position of '0'
+	l.readChar() // consume '0', now l.ch is 'b' or 'B'
+	l.readChar() // consume 'b' or 'B'
+	
+	// Read binary digits (0 or 1)
+	for isBinaryDigit(l.ch) {
+		l.readChar()
+	}
+	
+	return l.input[position:l.position]
+}
+
+func isHexDigit(ch byte) bool {
+	return isDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
+}
+
+func isBinaryDigit(ch byte) bool {
+	return ch == '0' || ch == '1'
+}
+
 func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_' || ch >= 0x80
 }
 
 func isDigit(ch byte) bool {

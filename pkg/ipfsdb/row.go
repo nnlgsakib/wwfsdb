@@ -92,7 +92,22 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.E
 		if err != nil {
 			return nil, err
 		}
-		valueStr := fmt.Sprintf("%v", rawValue)
+		var valueStr string
+		switch v := rawValue.(type) {
+		case float64:
+			// Check if it's a whole number
+			if v == float64(int64(v)) {
+				// It's an integer, format without decimal places
+				valueStr = fmt.Sprintf("%.0f", v)
+			} else {
+				// It's a real float, use default formatting
+				valueStr = fmt.Sprintf("%v", v)
+			}
+		case int64:
+			valueStr = fmt.Sprintf("%d", v)
+		default:
+			valueStr = fmt.Sprintf("%v", rawValue)
+		}
 		val, err := ValidateAndCastValue(valueStr, col.Type)
 		if err != nil {
 			return nil, fmt.Errorf("validation error for column '%s': %w", col.Name, err)

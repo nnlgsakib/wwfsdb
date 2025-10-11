@@ -76,6 +76,8 @@ func NewParser(l *lexer.Lexer) *Parser {
 	p.registerPrefix(lexer.IDENT, p.parseIdentifier)
 	p.registerPrefix(lexer.STRING, p.parseStringLiteral)
 	p.registerPrefix(lexer.NUMBER, p.parseNumberLiteral)
+	p.registerPrefix(lexer.HEX_LITERAL, p.parseHexLiteral)
+	p.registerPrefix(lexer.BINARY_LITERAL, p.parseBinaryLiteral)
 	p.registerPrefix(lexer.TRUE, p.parseBooleanLiteral)
 	p.registerPrefix(lexer.FALSE, p.parseBooleanLiteral)
 	p.registerPrefix(lexer.MINUS, p.parsePrefixExpression)
@@ -122,6 +124,44 @@ func (p *Parser) parseNumberLiteral() ast.Expression {
 		return nil
 	}
 	lit.Value = val
+	return lit
+}
+
+func (p *Parser) parseHexLiteral() ast.Expression {
+	// For hex literals, we parse them as numbers
+	lit := &ast.NumberLiteral{}
+	
+	// Remove the 0x or 0X prefix
+	hexStr := p.curToken.Literal[2:]
+	
+	// Parse the hex string as an integer
+	val, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as hex", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+	
+	lit.Value = float64(val)
+	return lit
+}
+
+func (p *Parser) parseBinaryLiteral() ast.Expression {
+	// For binary literals, we parse them as numbers
+	lit := &ast.NumberLiteral{}
+	
+	// Remove the 0b or 0B prefix
+	binStr := p.curToken.Literal[2:]
+	
+	// Parse the binary string as an integer
+	val, err := strconv.ParseInt(binStr, 2, 64)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse %q as binary", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+	
+	lit.Value = float64(val)
 	return lit
 }
 

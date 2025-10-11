@@ -26,9 +26,13 @@ const (
 	EOF     = "EOF"
 
 	// Identifiers & literals
-	IDENT  = "IDENT"  // add, foobar, x, y, ...
-	STRING = "STRING" // "foobar" or 'foobar'
-	NUMBER = "NUMBER"
+	IDENT        = "IDENT"        // add, foobar, x, y, ...
+	STRING       = "STRING"       // 'foobar'
+	DOUBLE_QUOTE = "DOUBLE_QUOTE" // "identifier"
+	NUMBER       = "NUMBER"
+	HEX_LITERAL  = "HEX_LITERAL"  // 0x1A2F
+	BINARY_LITERAL = "BINARY_LITERAL" // 0b1010
+	RAW_STRING   = "RAW_STRING"   // r"raw string"
 
 	// Operators
 	ASSIGN   = "="
@@ -96,6 +100,9 @@ const (
 	AVG      = "AVG"
 	MIN      = "MIN"
 	MAX      = "MAX"
+	DATE     = "DATE"
+	TIME     = "TIME"
+	TIMESTAMP = "TIMESTAMP"
 
 	// New tokens for Phase 0
 	NEWLINE  = "NEWLINE"
@@ -104,6 +111,8 @@ const (
 	WHITESPACE = "WHITESPACE"
 	COMMENT_SINGLE = "COMMENT_SINGLE"
 	COMMENT_MULTI = "COMMENT_MULTI"
+	
+	// New tokens for Phase 1
 )
 
 var keywords = map[string]TokenType{
@@ -151,6 +160,9 @@ var keywords = map[string]TokenType{
 	"AVG":      AVG,
 	"MIN":      MIN,
 	"MAX":      MAX,
+	"DATE":     DATE,
+	"TIME":     TIME,
+	"TIMESTAMP": TIMESTAMP,
 }
 
 func LookupIdent(ident string) TokenType {

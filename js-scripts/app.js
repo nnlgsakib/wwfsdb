@@ -857,6 +857,104 @@ async function runWhitespaceAndCommentTests() {
     );
 }
 
+async function runAdvancedLiteralTests() {
+    console.log('\n--- 🧪 Running Advanced Literal Tests (Phase 1 Features) ---\n');
+
+    // Create a test table for advanced literals
+    await assertCommandSuccess(`CREATE TABLE literal_test (
+        id INT, 
+        name VARCHAR(50),
+        hex_value INT,
+        bin_value INT,
+        sci_value FLOAT,
+        unicode_name VARCHAR(50)
+    );`, 'Creates a table for advanced literal tests');
+    
+    console.log('  --- Testing Scientific Notation Numbers ---');
+    // Test scientific notation literals
+    await assertCommandSuccess(`INSERT INTO literal_test VALUES 
+        (1, 'Sci Notation Test', 0xFF, 0b1010, 1.23e-4, 'αβγ_delta');`, 
+        'Inserts values with scientific notation, hex, binary, and Unicode');
+
+    await assertQueryResult(
+        `SELECT sci_value FROM literal_test WHERE id = 1;`,
+        [{"sci_value": 0.000123}],
+        'Selects and verifies scientific notation value (1.23e-4 = 0.000123)'
+    );
+
+    console.log('\n  --- Testing Hexadecimal Literals ---');
+    // Test hex literals
+    await assertCommandSuccess(`INSERT INTO literal_test VALUES 
+        (2, 'Hex Test', 0x1A2F, 0b1111, 2.5E+5, 'ñame_ü');`, 
+        'Inserts values with hex and binary literals');
+
+    await assertQueryResult(
+        `SELECT hex_value FROM literal_test WHERE id = 2;`,
+        [{"hex_value": 6703}], // 0x1A2F = 6703 in decimal
+        'Selects and verifies hexadecimal value (0x1A2F = 6703)'
+    );
+
+    console.log('\n  --- Testing Binary Literals ---');
+    // Test binary literals
+    await assertCommandSuccess(`INSERT INTO literal_test VALUES 
+        (3, 'Binary Test', 0XFF, 0B11111111, 3.14e10, 'unicode_θ');`, 
+        'Inserts values with uppercase hex and binary literals');
+
+    await assertQueryResult(
+        `SELECT bin_value FROM literal_test WHERE id = 3;`,
+        [{"bin_value": 255}], // 0b11111111 = 255 in decimal
+        'Selects and verifies binary value (0b11111111 = 255)'
+    );
+
+    console.log('\n  --- Testing Unicode Identifiers ---');
+    // Test Unicode in string literals
+    await assertCommandSuccess(`INSERT INTO literal_test VALUES 
+        (4, 'Unicode Test: αβγ_δ', 0x0, 0b0, 1.0, 'café_Москва');`, 
+        'Inserts values with Unicode characters in string literals');
+
+    await assertQueryResult(
+        `SELECT name FROM literal_test WHERE id = 4;`,
+        [{"name": "Unicode Test: αβγ_δ"}],
+        'Selects and verifies Unicode characters in string literal'
+    );
+
+    console.log('\n  --- Testing Mixed Literal Formats ---');
+    // Complex example with all literal types
+    await assertCommandSuccess(`
+        -- Complex test with mixed literal formats
+        INSERT INTO literal_test VALUES 
+               (5, 
+               'Mixed Format Test' /* inline comment */,
+               0xDEADBEEF,    -- hex literal
+               0b10101010,    -- binary literal
+               6.022e23,      -- scientific notation
+               'unicode_ñ_ü_θ'); -- Unicode string
+    `, 'Executes complex formatted SQL with mixed literal types');
+    
+    await assertQueryResult(
+        `SELECT hex_value, bin_value, sci_value FROM literal_test WHERE id = 5;`,
+        [{"hex_value": 3735928559, "bin_value": 170, "sci_value": 6.022e23}],
+        'Verifies complex formatted SQL result with mixed literal types'
+    );
+
+    console.log('\n  --- Testing DATE/TIME Keywords ---');
+    // Test that DATE, TIME, TIMESTAMP keywords work as identifiers
+    await assertCommandSuccess(`CREATE TABLE "DATE" (id INT, "TIME" VARCHAR(50), "TIMESTAMP" FLOAT);`, 
+        'Creates table with DATE/TIME/TIMESTAMP as quoted identifiers');
+
+    await assertCommandSuccess(`INSERT INTO "DATE" VALUES (1, '2023-01-01 12:00:00', 1672567200.0);`, 
+        'Inserts values into table with reserved keywords as column names');
+
+    await assertQueryResult(
+        `SELECT "TIME" FROM "DATE" WHERE id = 1;`,
+        [{"TIME": "2023-01-01 12:00:00"}],
+        'Selects from table with reserved keywords as column names'
+    );
+
+    // Clean up
+    await assertCommandSuccess(`DROP TABLE "DATE";`, 'Drops table with quoted identifier');
+}
+
 async function main() {
   try {
     console.log('Assuming Go server is running in a separate terminal.');
@@ -872,6 +970,7 @@ async function main() {
     await runJoinTests();
     await runAdvancedQueryTests();
     await runWhitespaceAndCommentTests(); // Test Phase 0 enhancements
+    await runAdvancedLiteralTests(); // Test Phase 1 enhancements
 
   } catch (e) {
     console.error('\n--- A critical error occurred ---');

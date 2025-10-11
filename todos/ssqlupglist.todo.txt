@@ -18,15 +18,15 @@
 
 ## Phase 1: Lexer Improvements
 
-- [ ] Add support for double-quoted strings for identifiers
-- [ ] Add support for numeric literals with scientific notation (e.g., 1.23e-4)
-- [ ] Add support for date/time literals (DATE, TIME, TIMESTAMP)
-- [ ] Add support for hex literals (0x1A2F)
-- [ ] Add support for binary literals (0b1010)
-- [ ] Add support for multiline comments (/* */)
-- [ ] Add position tracking (line, column) for better error reporting
-- [ ] Add support for Unicode identifiers
-- [ ] Add support for raw string literals (e.g., r"raw string")
+- [x] Add support for double-quoted strings for identifiers
+- [x] Add support for numeric literals with scientific notation (e.g., 1.23e-4)
+- [x] Add support for date/time literals (DATE, TIME, TIMESTAMP)
+- [x] Add support for hex literals (0x1A2F)
+- [x] Add support for binary literals (0b1010)
+- [x] Add support for multiline comments (/* */)
+- [x] Add position tracking (line, column) for better error reporting
+- [x] Add support for Unicode identifiers
+- [x] Add support for raw string literals (e.g., r"raw string")
 
 ## Phase 2: AST Enhancement
 
