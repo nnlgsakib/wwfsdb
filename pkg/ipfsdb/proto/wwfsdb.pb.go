@@ -277,6 +277,7 @@ type Database struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Tables         map[string]string      `protobuf:"bytes,1,rep,name=tables,proto3" json:"tables,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // map[table_name]table_cid
 	OwnerPublicKey string                 `protobuf:"bytes,2,opt,name=owner_public_key,json=ownerPublicKey,proto3" json:"owner_public_key,omitempty"`
+	NschemaModels  map[string]string      `protobuf:"bytes,3,rep,name=nschema_models,json=nschemaModels,proto3" json:"nschema_models,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // map[model_name]nschema_cid
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -323,6 +324,13 @@ func (x *Database) GetOwnerPublicKey() string {
 		return x.OwnerPublicKey
 	}
 	return ""
+}
+
+func (x *Database) GetNschemaModels() map[string]string {
+	if x != nil {
+		return x.NschemaModels
+	}
+	return nil
 }
 
 // IndexNode contains a list of CIDs for a given index key.
@@ -616,11 +624,15 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\aindexes\x18\x03 \x03(\v2\x19.proto.Table.IndexesEntryR\aindexes\x1a:\n" +
 	"\fIndexesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa4\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x02\n" +
 	"\bDatabase\x123\n" +
 	"\x06tables\x18\x01 \x03(\v2\x1b.proto.Database.TablesEntryR\x06tables\x12(\n" +
-	"\x10owner_public_key\x18\x02 \x01(\tR\x0eownerPublicKey\x1a9\n" +
+	"\x10owner_public_key\x18\x02 \x01(\tR\x0eownerPublicKey\x12I\n" +
+	"\x0enschema_models\x18\x03 \x03(\v2\".proto.Database.NschemaModelsEntryR\rnschemaModels\x1a9\n" +
 	"\vTablesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a@\n" +
+	"\x12NschemaModelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1f\n" +
 	"\tIndexNode\x12\x12\n" +
@@ -657,7 +669,7 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP() []byte {
 	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData
 }
 
-var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
 	(*Column)(nil),           // 0: proto.Column
 	(*Schema)(nil),           // 1: proto.Schema
@@ -673,8 +685,9 @@ var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
 	nil,                      // 11: proto.Row.ValuesEntry
 	nil,                      // 12: proto.Table.IndexesEntry
 	nil,                      // 13: proto.Database.TablesEntry
-	nil,                      // 14: proto.Index.NodesEntry
-	(*anypb.Any)(nil),        // 15: google.protobuf.Any
+	nil,                      // 14: proto.Database.NschemaModelsEntry
+	nil,                      // 15: proto.Index.NodesEntry
+	(*anypb.Any)(nil),        // 16: google.protobuf.Any
 }
 var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
 	0,  // 0: proto.Schema.columns:type_name -> proto.Column
@@ -682,15 +695,16 @@ var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
 	2,  // 2: proto.Page.rows:type_name -> proto.Row
 	12, // 3: proto.Table.indexes:type_name -> proto.Table.IndexesEntry
 	13, // 4: proto.Database.tables:type_name -> proto.Database.TablesEntry
-	14, // 5: proto.Index.nodes:type_name -> proto.Index.NodesEntry
-	9,  // 6: proto.ProllyNode.values:type_name -> proto.ProllyNodeValues
-	15, // 7: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
-	6,  // 8: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
-	9,  // [9:9] is the sub-list for method output_type
-	9,  // [9:9] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	14, // 5: proto.Database.nschema_models:type_name -> proto.Database.NschemaModelsEntry
+	15, // 6: proto.Index.nodes:type_name -> proto.Index.NodesEntry
+	9,  // 7: proto.ProllyNode.values:type_name -> proto.ProllyNodeValues
+	16, // 8: proto.Row.ValuesEntry.value:type_name -> google.protobuf.Any
+	6,  // 9: proto.Index.NodesEntry.value:type_name -> proto.IndexNode
+	10, // [10:10] is the sub-list for method output_type
+	10, // [10:10] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_pkg_ipfsdb_proto_wwfsdb_proto_init() }
@@ -704,7 +718,7 @@ func file_pkg_ipfsdb_proto_wwfsdb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc), len(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

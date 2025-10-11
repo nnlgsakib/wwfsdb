@@ -9,58 +9,74 @@ import (
     "regexp"
     "strings"
 
-    "github.com/nnlgsakib/wwfsdb/pkg/client"
-    "github.com/spf13/cobra"
-    "github.com/spf13/viper"
-)
-
-// migrateCmd represents the migrate command
-var migrateCmd = &cobra.Command{
-	Use:   "migrate [db_name] [ssql_file]",
-	Short: "Migrate a .ssql file to create tables in a database",
-	Long: `This command parses a .ssql file and adds tables to an existing database.
-It processes all CREATE TABLE statements in the file.`,
-	Args: cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
-		dbName := args[0]
-		ssqlFile := args[1]
-
-		fmt.Printf("Migrating tables from file '%s' to database '%s'\n", ssqlFile, dbName)
-
-		content, err := os.ReadFile(ssqlFile)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error reading file:", err)
-			return
-		}
-
-		// Split the content into individual statements based on semicolons
-		statements := splitSQLStatements(string(content))
-
-		privateKey := viper.GetString("private-key")
-		c := client.NewClient(viper.GetString("rpc-server"))
-
-		// Execute each statement
-		for _, stmt := range statements {
-			statementStr := strings.TrimSpace(stmt)
-			if statementStr == "" {
-				continue
-			}
-
-			fmt.Printf("Executing: %s\n", statementStr)
-			
-			result, err := c.ExecuteQuery(dbName, statementStr, "", privateKey)
-			if err != nil {
-				// Don't exit on error; just report it and continue with the next statement
-				fmt.Fprintf(os.Stderr, "Error executing statement: %v\n", err)
-				fmt.Fprintf(os.Stderr, "Statement: %s\n", statementStr)
-				continue
-			}
-
-			fmt.Println(result)
-		}
-	},
-}
-
+    	"github.com/nnlgsakib/wwfsdb/pkg/client"
+    	"github.com/spf13/cobra"
+    	"github.com/spf13/viper"
+    )
+    
+    // migrateCmd represents the migrate command
+    var migrateCmd = &cobra.Command{
+    	Use:   "migrate [db_name] [schema_file]",
+    	Short: "Migrate a .ssql or .nsc file to create/update schemas in a database",
+    	Long: `This command parses a schema file (.ssql or .nsc) and applies it to the database.
+    For .ssql files, it processes all CREATE TABLE statements.
+    For .nsc files, it parses the NSchema definition and updates the database models.`,
+    	Args: cobra.ExactArgs(2),
+    	Run: func(cmd *cobra.Command, args []string) {
+    		dbName := args[0]
+    		schemaFile := args[1]
+    
+    		fmt.Printf("Applying schema from file '%s' to database '%s'\n", schemaFile, dbName)
+    
+    		content, err := os.ReadFile(schemaFile)
+    		if err != nil {
+    			fmt.Fprintln(os.Stderr, "Error reading file:", err)
+    			return
+    		}
+    
+    		privateKey := viper.GetString("private-key")
+    		c := client.NewClient(viper.GetString("rpc-server"))
+    
+    		// Check file type and dispatch accordingly
+    		if strings.HasSuffix(schemaFile, ".nsc") {
+    			// Handle NSchema file
+    			if !strings.HasPrefix(string(content), "pragma nschema;") {
+    				fmt.Fprintln(os.Stderr, "Error: .nsc file must start with 'pragma nschema;'")
+    				return
+    			}
+    			fmt.Println("NSchema file detected. Sending to server for processing...")
+    			// In the future, we might parse it client-side first.
+    			// For now, send the whole file content to the RPC server.
+    			result, err := c.ExecuteQuery(dbName, string(content), "", privateKey)
+    			if err != nil {
+    				fmt.Fprintf(os.Stderr, "Error executing NSchema migration: %v\n", err)
+    				return
+    			}
+    			fmt.Println(result)
+    
+    		} else if strings.HasSuffix(schemaFile, ".ssql") {
+    			// Handle SSQL file (existing logic)
+    			statements := splitSQLStatements(string(content))
+    			for _, stmt := range statements {
+    				statementStr := strings.TrimSpace(stmt)
+    				if statementStr == "" {
+    					continue
+    				}
+    
+    				fmt.Printf("Executing: %s\n", statementStr)
+    				result, err := c.ExecuteQuery(dbName, statementStr, "", privateKey)
+    				if err != nil {
+    					fmt.Fprintf(os.Stderr, "Error executing statement: %v\n", err)
+    					fmt.Fprintf(os.Stderr, "Statement: %s\n", statementStr)
+    					continue
+    				}
+    				fmt.Println(result)
+    			}
+    		} else {
+    			fmt.Fprintln(os.Stderr, "Error: unsupported schema file type. Please use .ssql or .nsc")
+    		}
+    	},
+    }
 // splitSQLStatements splits a string containing multiple SQL statements separated by semicolons
 func splitSQLStatements(sql string) []string {
 	// Remove comments and extra whitespace

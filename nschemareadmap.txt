@@ -1,0 +1,209 @@
+# NSchema: A Comprehensive Roadmap from Concept to Production
+
+This document outlines the multi-phase development plan for NSchema, a modern, IPFS-native schema and data management language for the wwfsdb ecosystem. The goal is to create a powerful, flexible, and developer-friendly alternative to the existing SSQL, while retaining full backward compatibility.
+
+## Guiding Principles
+
+- **IPFS-Native:** Leverage the unique capabilities of IPFS, such as content-addressing, immutability, and DAGs, at the core of the language design.
+- **Simplicity & Power:** The syntax should be simple and intuitive, but capable of defining complex, nested, and relational data structures.
+- **Developer Experience:** Provide a first-class developer experience with clear syntax, strong validation, and powerful tooling.
+- **Performance:** Design for efficient data retrieval and storage on a decentralized network.
+- **Extensibility:** The language and its underlying system should be designed to be extended with new features over time.
+
+---
+
+## Phase 1: Core Language, Skeleton, and Integration
+
+**Goal:** Define the core NSchema language, build the foundational tooling (lexer, parser, AST), and integrate it into the existing `wwfsdb` CLI and RPC server.
+
+### 1.1. NSchema Language Definition (v1)
+- **File Structure:**
+    - All NSchema files must use the `.nsc` extension.
+    - All `.nsc` files must begin with `pragma nschema;` on the first line.
+- **Core Concepts:**
+    - **`model`:** The primary building block, analogous to a SQL table but representing a collection of schema-defined documents.
+    - **Fields:** Properties of a model, with a name and a type.
+    - **Scalar Types:** `string`, `int`, `float`, `bool`, `bytes`.
+    - **Complex Types:**
+        - `map[<key_type>]:<value_type>`: For key-value stores.
+        - `array[<type>]`: For lists of values.
+        - `link <model_name>`: A content-addressable link (CID) to a document in another model. This is the cornerstone of decentralized relationships.
+        - `struct <struct_name> {}`: For defining reusable, nested object structures.
+- **Attributes/Decorators:**
+    - `@id`: Designates a field as the primary identifier for a document. Must be unique.
+    - `@unique`: Enforces that the value of this field must be unique across all documents in the model.
+    - `@index`: Creates an index on this field for faster lookups.
+    - `@default(<value>)`: Specifies a default value for a field.
+    - `@optional`: Marks a field as optional. By default, all fields are required.
+    - `@timestamp(on: "create" | "update")`: Automatically sets a timestamp on document creation or update.
+
+### 1.2. Foundational Tooling
+- **Create `pkg/nschema` directory.**
+- **Lexer (`pkg/nschema/lexer`):**
+    - Define all necessary tokens (e.g., `PRAGMA`, `NSCHEMA`, `MODEL`, `LINK`, `@ID`, etc.).
+    - Implement a robust lexer that correctly tokenizes `.nsc` files, handling comments and whitespace.
+- **AST (`pkg/nschema/ast`):**
+    - Define Go structs for all language constructs (e.g., `SchemaNode`, `ModelNode`, `FieldNode`, `LinkNode`, `AttributeNode`).
+- **Parser (`pkg/nschema/parser`):**
+    - Implement a parser that consumes tokens from the lexer and builds a complete, valid AST.
+    - Provide clear and actionable error messages for syntax errors.
+
+### 1.3. Core Integration
+- **Modify `cmd/migrate.go`:**
+    - Detect if the migration file has a `.nsc` extension.
+    - If it's a `.nsc` file, read the first line to ensure it's `pragma nschema;`.
+    - If valid, invoke the new NSchema parser to get the AST.
+    - (Placeholder) The execution logic will simply print the parsed AST to the console.
+- **Modify `pkg/rpc/service.go` (`ExecuteQuery`):**
+    - Add logic to detect if a query string starts with `pragma nschema;`.
+    - If it does, route it to a new, dedicated NSchema execution path. This path will initially be a placeholder.
+- **Update Protobufs (`pkg/ipfsdb/proto/wwfsdb.proto`):**
+    - Add a new field to the `Database` message: `map<string, string> nschema_models = 3;` to store NSchema model definitions (mapping model name to its schema CID).
+    - This ensures NSchema and SSQL tables can coexist within the same database.
+
+---
+
+## Phase 2: Data Operations and Query Language
+
+**Goal:** Implement the full lifecycle of data (Create, Read, Update, Delete) for NSchema models and introduce a dedicated query language.
+
+### 2.1. NSchema Query Language (NSQL) Definition
+- **Design a query language.** This should NOT be SQL. A GraphQL-like or object-based syntax is preferred for its natural fit with nested data.
+- **Example NSQL `find` query:**
+  ```
+  find user {
+    where: {
+      name: { eq: "Alice" },
+      age: { gt: 30 }
+    },
+    select: {
+      name: true,
+      email: true,
+      posts: {
+        select: {
+          title: true,
+          content: true
+        }
+      }
+    },
+    limit: 10
+  }
+  ```
+- **Example NSQL `create` mutation:**
+  ```
+  create user {
+    data: {
+      name: "Bob",
+      email: "bob@example.com"
+    }
+  }
+  ```
+
+### 2.2. Implementation of Data Operations
+- **Create `pkg/nschema/execution` package.**
+- **Implement `Create`:**
+    - Parse the `create` mutation.
+    - Validate the input data against the NSchema model definition.
+    - Create a new document (as a separate IPFS object), store it, and get its CID.
+    - Update the model's primary index (and any other `@unique` or `@index` fields).
+- **Implement `Find` (Read):**
+    - Parse the `find` query.
+    - Use indexes (starting with the primary `@id` index) to locate document CIDs.
+    - Fetch the document objects from IPFS.
+    - Handle nested `select` clauses by resolving `link` fields (fetching the linked documents by their CIDs).
+- **Implement `Update` and `Delete`:**
+    - Similar to `Create`, these will parse the mutation, find the relevant document, perform the operation (creating a new version for update), and update all relevant indexes.
+
+### 2.3. Tooling and RPC Integration
+- **Update `cmd/shell.go`:**
+    - Add a mode or detection logic to support NSQL queries alongside SSQL.
+    - Implement result formatting for nested/JSON-like data.
+- **Update `pkg/rpc/service.go`:**
+    - Create new RPC methods for NSQL operations (e.g., `nschema.Execute`, `nschema.Find`, `nschema.Mutate`).
+    - The main `ExecuteQuery` will now be a dispatcher, routing to SSQL or NSQL handlers based on the query syntax.
+- **Update `cmd/` commands:** Create new commands like `wwfsdb nquery <db_name> '<nsql_query>'` for non-interactive NSQL execution.
+
+---
+
+## Phase 3: Advanced IPFS-Native Features
+
+**Goal:** Leverage the full power of IPFS to build features that are difficult or impossible in traditional databases.
+
+### 3.1. Data Versioning and Time-Travel
+- **Concept:** Since all data is immutable, every update creates a new version of a document with a new CID. The model's index will point to the latest version.
+- **Implementation:**
+    - Expose a mechanism to query older versions of a document.
+    - `find user { where: { id: "user-123" }, history: true }` could return a list of all CIDs for that document's history.
+    - `find user { where: { id: "user-123" }, version: "zdpu..." }` could fetch a specific historical version.
+
+### 3.2. Advanced Indexing with Prolly-Trees
+- **Goal:** Replace the simple map-based indexes with the more efficient Prolly-Tree implementation already present in the codebase.
+- **Implementation:**
+    - Refactor `pkg/ipfsdb/index.go` to use `pkg/ipfsdb/prolly_trees.go`.
+    - Ensure that `Create`, `Update`, and `Delete` operations correctly and efficiently update the Prolly-Tree indexes.
+    - This will be critical for performance as datasets grow.
+
+### 3.3. Schema Evolution and Migration
+- **Goal:** Allow developers to safely evolve their NSchema models over time.
+- **Implementation:**
+    - When a new `.nsc` schema is migrated, the system will detect changes against the previous schema CID.
+    - **Additive changes** (new optional fields) can be applied directly.
+    - **Breaking changes** (renaming fields, changing types) will require a migration strategy.
+    - Introduce a `migrate` block in NSchema for defining data transformation logic.
+      ```nschema
+      pragma nschema;
+      
+      model user {
+        // ... new schema ...
+      }
+
+      migrate user from "zdpu..." {
+        // Logic to transform old data to new shape
+        // e.g., fullName -> firstName, lastName
+      }
+      ```
+
+### 3.4. Granular Access Control (ACLs)
+- **Goal:** Define read/write permissions at the model and field level.
+- **Implementation:**
+    - Introduce an `@acl` attribute in NSchema.
+      ```nschema
+      model post {
+        @id id: string;
+        title: string;
+        content: string;
+        author: link user @acl(read: "*", write: "self"); // Everyone can read, only the author can write
+        views: int @acl(read: "*", write: "owner"); // Only the DB owner can update the view count
+      }
+      ```
+    - The `auth` package will need to be extended to handle these rules, potentially using decentralized identifiers (DIDs) or public keys.
+
+---
+
+## Phase 4: Production Readiness and Ecosystem
+
+**Goal:** Harden the system, optimize performance, and build out the surrounding ecosystem to make NSchema production-ready.
+
+### 4.1. Testing and Benchmarking
+- Develop a comprehensive test suite covering:
+    - NSchema language parsing and validation.
+    - Correctness of all data operations (CRUD).
+    - Indexing integrity and performance.
+    - Concurrency and transaction handling.
+- Create benchmarks for query performance against datasets of varying sizes and complexity.
+
+### 4.2. Documentation
+- Write complete documentation for the NSchema language, including all types, attributes, and features.
+- Document the NSQL query language with plenty of examples.
+- Create tutorials and guides for getting started, migration from SSQL, and using advanced features.
+
+### 4.3. Client Libraries
+- Develop a JavaScript/TypeScript client library to interact with the `wwfsdb` RPC server from web applications.
+- This library should provide a strongly-typed interface for building and executing NSQL queries.
+
+### 4.4. Database and Schema Management
+- Enhance the `wwfsdb` CLI with better tools for:
+    - Introspecting NSchema models.
+    - Managing indexes.
+    - Viewing data history.
+    - Validating and linting `.nsc` files.

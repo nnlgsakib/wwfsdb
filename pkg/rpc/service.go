@@ -41,6 +41,15 @@ type ExecuteQueryResult struct {
 
 // ExecuteQuery is the RPC method that executes a SQL query against the database.
 func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *ExecuteQueryResult) error {
+	// Check for NSchema pragma
+	if strings.HasPrefix(args.Query, "pragma nschema;") {
+		// This is the entry point for NSchema processing.
+		// For now, we'll just return a success message.
+		// In the future, this will invoke the NSchema parser and execution engine.
+		reply.Result = "NSchema definition received and processed (placeholder)."
+		return nil
+	}
+
 	stmt, err := ssql.Parse(args.Query)
 	if err != nil {
 		return fmt.Errorf("parser error: %w", err)
