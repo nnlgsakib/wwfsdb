@@ -16,6 +16,80 @@ WWSQL supports the following data types for table columns:
 
 ---
 
+## Advanced Literal Formats
+
+WWSQL supports several advanced literal formats for enhanced expressiveness:
+
+### Scientific Notation Numbers
+
+Numbers can be expressed in scientific notation using `e` or `E`:
+
+```sql
+-- Examples of scientific notation
+INSERT INTO measurements VALUES (1, 1.23e-4);     -- 0.000123
+INSERT INTO measurements VALUES (2, 2.5E+5);      -- 250000.0
+INSERT INTO measurements VALUES (3, 6.022e23);    -- 602200000000000000000000.0
+```
+
+### Hexadecimal Literals
+
+Integer literals can be expressed in hexadecimal format using `0x` or `0X` prefix:
+
+```sql
+-- Examples of hexadecimal literals
+INSERT INTO colors VALUES (1, 0xFF0000);    -- Red (255, 0, 0 in RGB)
+INSERT INTO colors VALUES (2, 0x00FF00);    -- Green (0, 255, 0 in RGB)
+INSERT INTO colors VALUES (3, 0x0000FF);    -- Blue (0, 0, 255 in RGB)
+INSERT INTO flags VALUES (4, 0xDEADBEEF);   -- Large hex value
+```
+
+### Binary Literals
+
+Integer literals can be expressed in binary format using `0b` or `0B` prefix:
+
+```sql
+-- Examples of binary literals
+INSERT INTO permissions VALUES (1, 0b11111111);  -- 255 in decimal
+INSERT INTO permissions VALUES (2, 0b10101010);  -- 170 in decimal
+INSERT INTO flags VALUES (3, 0b1);              -- 1 in decimal
+```
+
+### Date/Time Keywords
+
+The following keywords are reserved for date/time operations:
+- `DATE` - For date values
+- `TIME` - For time values  
+- `TIMESTAMP` - For timestamp values
+
+These can be used as quoted identifiers when needed:
+
+```sql
+-- Using reserved keywords as column names
+CREATE TABLE events ("DATE" VARCHAR(50), "TIME" VARCHAR(50), "TIMESTAMP" FLOAT);
+```
+
+### Unicode Identifiers
+
+WWSQL supports Unicode characters in string literals:
+
+```sql
+-- Examples of Unicode in string literals
+INSERT INTO users VALUES (1, 'José María', 'café_Москва');
+INSERT INTO products VALUES (2, 'Über Product', 'Nação');
+```
+
+### Double-Quoted Identifiers
+
+Identifiers can be enclosed in double quotes to allow special characters or reserved words:
+
+```sql
+-- Using double-quoted identifiers
+CREATE TABLE "My Special Table" ("First Name" VARCHAR(50), "Last-Name" VARCHAR(50));
+INSERT INTO "My Special Table" VALUES ('John', 'Doe');
+```
+
+---
+
 ## Data Definition Language (DDL)
 
 DDL commands are used to define and manage the database structure.
@@ -261,4 +335,71 @@ Discards all changes made during the current transaction.
 **Syntax:**
 ```sql
 ROLLBACK;
+```
+
+---
+
+## Formatting and Comments
+
+WWSQL supports various formatting options and comments for improved code readability:
+
+### Whitespace and Indentation
+
+WWSQL handles various whitespace styles including spaces, tabs, and mixed indentation:
+
+```sql
+-- Spaces indentation
+SELECT id,
+    name,
+        email
+FROM users;
+
+-- Tabs indentation  
+SELECT id,
+	name,
+		email
+FROM users;
+
+-- Mixed indentation
+SELECT 
+        id,
+        name,
+        email
+    FROM 
+        users;
+```
+
+### Comments
+
+WWSQL supports both single-line and multi-line comments:
+
+```sql
+-- This is a single-line comment
+SELECT id, name -- This is an inline comment
+FROM users;
+
+/* This is a 
+   multi-line comment */
+SELECT * FROM users;
+
+/* Multi-line comment
+   spanning
+   multiple lines */
+INSERT INTO users VALUES (1, 'John', 'john@example.com', true);
+```
+
+### Complex Formatting
+
+WWSQL can handle complex formatting with comments and newlines:
+
+```sql
+-- Complex query with various formatting features
+SELECT 
+    id,                    -- User ID
+    name,                  /* User name */
+    email 
+FROM users 
+WHERE id > 0              -- Active users only
+      AND name IS NOT NULL
+ORDER BY name ASC;
 ```
