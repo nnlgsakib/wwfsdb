@@ -247,12 +247,17 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
-			if err != nil {
-				return nil, 0, err
+			// If there's no WHERE clause, include all rows for UPDATE
+			shouldInclude := update.Where == nil || update.Where.Expr == nil
+			if !shouldInclude {
+				include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
+				if err != nil {
+					return nil, 0, err
+				}
+				shouldInclude = include
 			}
 
-			if include {
+			if shouldInclude {
 				// Capture old row state for index update
 				oldRow := proto.Clone(row).(*pb.Row)
 
@@ -354,12 +359,17 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 		var newRows []*pb.Row
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, delete.Where.Expr, schemas)
-			if err != nil {
-				return nil, 0, err
+			// If there's no WHERE clause, include all rows for DELETE (i.e., delete all rows)
+			shouldInclude := delete.Where == nil || delete.Where.Expr == nil
+			if !shouldInclude {
+				include, err := evaluateExpression(CombinedRow{tableName: row}, delete.Where.Expr, schemas)
+				if err != nil {
+					return nil, 0, err
+				}
+				shouldInclude = include
 			}
 
-			if include {
+			if shouldInclude {
 				deletedCount++
 				pageModified = true
 				// Update indexes before "deleting" the row from its page
