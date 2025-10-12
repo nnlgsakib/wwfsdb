@@ -34,7 +34,7 @@ func Insert(ipfsAPI, dbName, tableName string, insert *sqlparser.Insert) error {
 	return nil
 }
 
-// InsertDB adds a new row to an in-memory database object using paged storage.
+// InsertDB adds new rows to an in-memory database object using paged storage.
 func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlparser.Insert) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
@@ -54,68 +54,99 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 	}
 
 	values := insert.Rows.(sqlparser.Values)
-	if len(values) != 1 {
-		return nil, fmt.Errorf("multi-row inserts not yet supported")
-	}
-	rowTuple := values[0]
-
-	if len(rowTuple) != len(schema.Columns) {
-		return nil, fmt.Errorf("incorrect number of values for insert statement")
+	if len(values) == 0 {
+		return nil, fmt.Errorf("no rows provided in INSERT statement")
 	}
 
-	// Create the new row object
-	row := &pb.Row{Values: make(map[string]*anypb.Any)}
-	for i, col := range schema.Columns {
-		expr := rowTuple[i]
-		lit, ok := expr.(*sqlparser.SQLVal)
-		if !ok {
-			return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
-		}
-
-		val, err := ValidateAndCastValue(string(lit.Val), col.Type)
-		if err != nil {
-			return nil, fmt.Errorf("validation error for column '%s': %w", col.Name, err)
-		}
-		row.Values[col.Name] = val
-	}
-
-	var lastPage *pb.Page
-	var lastPageCID string
-	isNewPage := false
-
-	if len(table.PageCids) > 0 {
-		lastPageCID = table.PageCids[len(table.PageCids)-1]
-		lastPage, err = LoadPage(sh, lastPageCID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load last page %s: %w", lastPageCID, err)
-		}
-	}
-
-	if lastPage == nil || len(lastPage.Rows) >= MaxRowsPerPage {
-		lastPage = &pb.Page{Rows: []*pb.Row{}}
-		isNewPage = true
-	}
-
-	// Add the new row to the page
-	lastPage.Rows = append(lastPage.Rows, row)
-
-	// Save the updated page to get its new CID
-	newPageCID, err := AddObject(sh, lastPage)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update indexes with the new row data and page CID
-	table, err = UpdateIndexesOnInsert(sh, table, newPageCID, row)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update indexes on insert: %w", err)
-	}
-
-	// Update the table's page list
-	if isNewPage {
-		table.PageCids = append(table.PageCids, newPageCID)
+	// Handle column specification in INSERT
+	// If insert.Columns is empty, all columns in schema order are expected
+	var insertColumnNames []sqlparser.ColIdent
+	if len(insert.Columns) > 0 {
+		insertColumnNames = insert.Columns
 	} else {
-		table.PageCids[len(table.PageCids)-1] = newPageCID
+		// If no columns specified, expect all columns in schema order
+		insertColumnNames = make([]sqlparser.ColIdent, len(schema.Columns))
+		for i, col := range schema.Columns {
+			insertColumnNames[i] = sqlparser.NewColIdent(col.Name)
+		}
+	}
+
+	// Process all rows in the insert statement
+	for _, rowTuple := range values {
+		if len(rowTuple) != len(insertColumnNames) {
+			return nil, fmt.Errorf("incorrect number of values for insert statement: got %d values for %d specified columns", len(rowTuple), len(insertColumnNames))
+		}
+
+		// Create the new row object
+		row := &pb.Row{Values: make(map[string]*anypb.Any)}
+		
+		// Process each specified column and its corresponding value
+		for i, colName := range insertColumnNames {
+			colNameStr := colName.String()
+			
+			// Verify that the specified column exists in the schema
+			var colInSchema *pb.Column
+			for _, schemaCol := range schema.Columns {
+				if schemaCol.Name == colNameStr {
+					colInSchema = schemaCol
+					break
+				}
+			}
+			if colInSchema == nil {
+				return nil, fmt.Errorf("column '%s' does not exist in table '%s'", colNameStr, tableName)
+			}
+
+			expr := rowTuple[i]
+			lit, ok := expr.(*sqlparser.SQLVal)
+			if !ok {
+				return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
+			}
+
+			val, err := ValidateAndCastValue(string(lit.Val), colInSchema.Type)
+			if err != nil {
+				return nil, fmt.Errorf("validation error for column '%s': %w", colNameStr, err)
+			}
+			row.Values[colNameStr] = val
+		}
+
+		var lastPage *pb.Page
+		var lastPageCID string
+		isNewPage := false
+
+		if len(table.PageCids) > 0 {
+			lastPageCID = table.PageCids[len(table.PageCids)-1]
+			lastPage, err = LoadPage(sh, lastPageCID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load last page %s: %w", lastPageCID, err)
+			}
+		}
+
+		if lastPage == nil || len(lastPage.Rows) >= MaxRowsPerPage {
+			lastPage = &pb.Page{Rows: []*pb.Row{}}
+			isNewPage = true
+		}
+
+		// Add the new row to the page
+		lastPage.Rows = append(lastPage.Rows, row)
+
+		// Save the updated page to get its new CID
+		newPageCID, err := AddObject(sh, lastPage)
+		if err != nil {
+			return nil, err
+		}
+
+		// Update indexes with the new row data and page CID
+		table, err = UpdateIndexesOnInsert(sh, table, newPageCID, row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update indexes on insert: %w", err)
+		}
+
+		// Update the table's page list
+		if isNewPage {
+			table.PageCids = append(table.PageCids, newPageCID)
+		} else {
+			table.PageCids[len(table.PageCids)-1] = newPageCID
+		}
 	}
 
 	// Save the final table structure
