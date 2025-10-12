@@ -15,10 +15,19 @@ func extractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {
 
 	schema := &pb.Schema{}
 	for _, colDef := range createTable.Columns {
-		schema.Columns = append(schema.Columns, &pb.Column{
+		col := &pb.Column{
 			Name: colDef.Name,
 			Type: colDef.Type,
-		})
+		}
+		for _, opt := range colDef.Options {
+			switch opt.Type {
+			case sqlparser.ColumnOptionNotNull:
+				col.IsNotNull = true
+			case sqlparser.ColumnOptionUniqKey:
+				col.IsUnique = true
+			}
+		}
+		schema.Columns = append(schema.Columns, col)
 	}
 	return schema, nil
 }

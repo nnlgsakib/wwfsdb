@@ -54,7 +54,7 @@ Example:
 			}
 
 			query.WriteString(line)
-			query.WriteString(" ")
+			query.WriteString("\n")
 
 			if !strings.HasSuffix(trimmedLine, ";") {
 				continue

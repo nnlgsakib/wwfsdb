@@ -27,6 +27,8 @@ type Column struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	IsNotNull     bool                   `protobuf:"varint,3,opt,name=is_not_null,json=isNotNull,proto3" json:"is_not_null,omitempty"`
+	IsUnique      bool                   `protobuf:"varint,4,opt,name=is_unique,json=isUnique,proto3" json:"is_unique,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -73,6 +75,20 @@ func (x *Column) GetType() string {
 		return x.Type
 	}
 	return ""
+}
+
+func (x *Column) GetIsNotNull() bool {
+	if x != nil {
+		return x.IsNotNull
+	}
+	return false
+}
+
+func (x *Column) GetIsUnique() bool {
+	if x != nil {
+		return x.IsUnique
+	}
+	return false
 }
 
 // Schema represents the schema of a table.
@@ -595,10 +611,12 @@ var File_pkg_ipfsdb_proto_wwfsdb_proto protoreflect.FileDescriptor
 
 const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\n" +
-	"\x1dpkg/ipfsdb/proto/wwfsdb.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"0\n" +
+	"\x1dpkg/ipfsdb/proto/wwfsdb.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"m\n" +
 	"\x06Column\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04type\x18\x02 \x01(\tR\x04type\"1\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1e\n" +
+	"\vis_not_null\x18\x03 \x01(\bR\tisNotNull\x12\x1b\n" +
+	"\tis_unique\x18\x04 \x01(\bR\bisUnique\"1\n" +
 	"\x06Schema\x12'\n" +
 	"\acolumns\x18\x01 \x03(\v2\r.proto.ColumnR\acolumns\"\x86\x01\n" +
 	"\x03Row\x12.\n" +

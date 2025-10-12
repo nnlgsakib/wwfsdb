@@ -10,6 +10,8 @@ import "google/protobuf/any.proto";
 message Column {
   string name = 1;
   string type = 2;
+  bool is_not_null = 3;
+  bool is_unique = 4;
 }
 
 // Schema represents the schema of a table.

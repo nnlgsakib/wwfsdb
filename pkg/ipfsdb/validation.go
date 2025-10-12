@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -15,9 +16,11 @@ func ValidateAndCastValue(value string, dataType string) (*anypb.Any, error) {
 	var val interface{}
 	var err error
 
+	if value == "NULL" {
+		return nil, nil // Represent SQL NULL as a nil Any pointer
+	}
+
 	if strings.HasPrefix(upperDataType, "VARCHAR") {
-		// For simplicity, we'll just check length for now if specified
-		// Example: VARCHAR(255)
 		var maxLen int = -1
 		if _, errS := fmt.Sscanf(upperDataType, "VARCHAR(%d)", &maxLen); errS == nil {
 			if len(value) > maxLen {
@@ -25,6 +28,12 @@ func ValidateAndCastValue(value string, dataType string) (*anypb.Any, error) {
 			}
 		}
 		val = value
+	} else if strings.HasPrefix(upperDataType, "DECIMAL") {
+		// For now, treat DECIMAL as FLOAT for storage.
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid decimal value: '%s'", value)
+		}
 	} else {
 		switch upperDataType {
 		case "INT", "INTEGER":
@@ -44,8 +53,22 @@ func ValidateAndCastValue(value string, dataType string) (*anypb.Any, error) {
 			}
 		case "TEXT":
 			val = value
+		case "DATE":
+			val, err = time.Parse("2006-01-02", value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid date value: '%s', expected format YYYY-MM-DD", value)
+			}
+		case "TIME":
+			val, err = time.Parse("15:04:05", value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid time value: '%s', expected format HH:MM:SS", value)
+			}
+		case "TIMESTAMP":
+			val, err = time.Parse(time.RFC3339, value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid timestamp value: '%s', expected format RFC3339 (e.g., 2006-01-02T15:04:05Z07:00)", value)
+			}
 		default:
-			// For any other type not explicitly handled, treat as string for now.
 			val = value
 		}
 	}

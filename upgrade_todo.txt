@@ -16,8 +16,8 @@
 - [ ] 9. Fix the placeholder for column name extraction in CreateIndexDB to properly extract column from DDL statement
 - [x] 10. Add support for multi-row INSERT operations
 - [ ] 11. Implement proper authentication and authorization with public/private key pairs for database access control
-- [ ] 12. Implement proper SQL constraint support (CHECK, NOT NULL, UNIQUE)
-- [ ] 13. Add support for more SQL data types (DATE, TIME, TIMESTAMP, DECIMAL, UUID)
+- [x] 12. Implement proper SQL constraint support (CHECK, NOT NULL, UNIQUE)
+- [x] 13. Add support for more SQL data types (DATE, TIME, TIMESTAMP, DECIMAL, UUID)
 - [ ] 14. Implement stored procedures and functions
 - [ ] 15. Implement views functionality
 - [ ] 16. Add support for sequences and auto-increment functionality

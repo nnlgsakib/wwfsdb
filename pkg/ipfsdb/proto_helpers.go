@@ -2,8 +2,10 @@ package ipfsdb
 
 import (
 	"fmt"
+	"time"
 
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -23,6 +25,8 @@ func ToAny(v interface{}) (*anypb.Any, error) {
 		any, err = anypb.New(wrapperspb.String(val))
 	case []byte:
 		any, err = anypb.New(wrapperspb.Bytes(val))
+	case time.Time:
+		any, err = anypb.New(timestamppb.New(val))
 	default:
 		err = fmt.Errorf("unsupported type for Any: %T", v)
 	}
@@ -48,6 +52,8 @@ func FromAny(any *anypb.Any) (interface{}, error) {
 		return v.Value, nil
 	case *wrapperspb.BytesValue:
 		return v.Value, nil
+	case *timestamppb.Timestamp:
+		return v.AsTime(), nil
 	default:
 		return nil, fmt.Errorf("unsupported type in Any: %T", v)
 	}

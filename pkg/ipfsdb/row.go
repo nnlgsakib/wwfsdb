@@ -3,9 +3,9 @@ package ipfsdb
 import (
 	"fmt"
 
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -58,33 +58,26 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 		return nil, fmt.Errorf("no rows provided in INSERT statement")
 	}
 
-	// Handle column specification in INSERT
-	// If insert.Columns is empty, all columns in schema order are expected
 	var insertColumnNames []sqlparser.ColIdent
 	if len(insert.Columns) > 0 {
 		insertColumnNames = insert.Columns
 	} else {
-		// If no columns specified, expect all columns in schema order
 		insertColumnNames = make([]sqlparser.ColIdent, len(schema.Columns))
 		for i, col := range schema.Columns {
 			insertColumnNames[i] = sqlparser.NewColIdent(col.Name)
 		}
 	}
 
-	// Process all rows in the insert statement
 	for _, rowTuple := range values {
 		if len(rowTuple) != len(insertColumnNames) {
 			return nil, fmt.Errorf("incorrect number of values for insert statement: got %d values for %d specified columns", len(rowTuple), len(insertColumnNames))
 		}
 
-		// Create the new row object
 		row := &pb.Row{Values: make(map[string]*anypb.Any)}
-		
-		// Process each specified column and its corresponding value
+
 		for i, colName := range insertColumnNames {
 			colNameStr := colName.String()
-			
-			// Verify that the specified column exists in the schema
+
 			var colInSchema *pb.Column
 			for _, schemaCol := range schema.Columns {
 				if schemaCol.Name == colNameStr {
@@ -106,6 +99,33 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 			if err != nil {
 				return nil, fmt.Errorf("validation error for column '%s': %w", colNameStr, err)
 			}
+
+			if colInSchema.IsNotNull && val == nil {
+				return nil, fmt.Errorf("column '%s' cannot be null", colNameStr)
+			}
+
+			if colInSchema.IsUnique {
+				if val == nil {
+					return nil, fmt.Errorf("unique column '%s' cannot be null", colNameStr)
+				}
+				indexCID, ok := table.Indexes[colNameStr]
+				if !ok {
+					return nil, fmt.Errorf("internal error: unique column '%s' has no index", colNameStr)
+				}
+				prollyTree := LoadProllyTree(sh, indexCID)
+				key, err := valueToString(val)
+				if err != nil {
+					return nil, err
+				}
+				existing, err := prollyTree.Get(key)
+				if err != nil {
+					return nil, err
+				}
+				if len(existing) > 0 {
+					return nil, fmt.Errorf("unique constraint violation for column '%s': value '%s' already exists", colNameStr, key)
+				}
+			}
+
 			row.Values[colNameStr] = val
 		}
 
@@ -126,22 +146,18 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 			isNewPage = true
 		}
 
-		// Add the new row to the page
 		lastPage.Rows = append(lastPage.Rows, row)
 
-		// Save the updated page to get its new CID
 		newPageCID, err := AddObject(sh, lastPage)
 		if err != nil {
 			return nil, err
 		}
 
-		// Update indexes with the new row data and page CID
 		table, err = UpdateIndexesOnInsert(sh, table, newPageCID, row)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update indexes on insert: %w", err)
 		}
 
-		// Update the table's page list
 		if isNewPage {
 			table.PageCids = append(table.PageCids, newPageCID)
 		} else {
@@ -149,7 +165,6 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 		}
 	}
 
-	// Save the final table structure
 	newTableCID, err := AddObject(sh, table)
 	if err != nil {
 		return nil, err
@@ -207,7 +222,6 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 	}
 	schemas := map[string]*pb.Schema{tableName: schema}
 
-	// TODO: Handle multiple SET clauses
 	if len(update.Exprs) != 1 {
 		return nil, 0, fmt.Errorf("multiple SET clauses not yet supported")
 	}
@@ -247,7 +261,6 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 
 		pageModified := false
 		for _, row := range page.Rows {
-			// If there's no WHERE clause, include all rows for UPDATE
 			shouldInclude := update.Where == nil || update.Where.Expr == nil
 			if !shouldInclude {
 				include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
@@ -258,15 +271,12 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 			}
 
 			if shouldInclude {
-				// Capture old row state for index update
 				oldRow := proto.Clone(row).(*pb.Row)
 
-				// Update the row data with the new value
 				row.Values[setColumn] = castedValue
 				pageModified = true
 				updatedCount++
 
-				// Treat update as a delete then an insert for indexing purposes
 				table, err = UpdateIndexesOnDelete(sh, table, pageCID, page, oldRow)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to update indexes on delete part of update: %w", err)
@@ -359,7 +369,6 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 		var newRows []*pb.Row
 		pageModified := false
 		for _, row := range page.Rows {
-			// If there's no WHERE clause, include all rows for DELETE (i.e., delete all rows)
 			shouldInclude := delete.Where == nil || delete.Where.Expr == nil
 			if !shouldInclude {
 				include, err := evaluateExpression(CombinedRow{tableName: row}, delete.Where.Expr, schemas)
@@ -372,7 +381,6 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 			if shouldInclude {
 				deletedCount++
 				pageModified = true
-				// Update indexes before "deleting" the row from its page
 				table, err = UpdateIndexesOnDelete(sh, table, pageCID, page, row)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to update indexes on delete: %w", err)
@@ -391,9 +399,8 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 				}
 				newPageCIDs = append(newPageCIDs, newPageCID)
 			}
-			// If the page is now empty, we simply don't add it to the new list of page CIDs.
 		} else {
-			newPageCIDs = append(newPageCIDs, pageCID) // Page was not modified, keep original CID.
+			newPageCIDs = append(newPageCIDs, pageCID) 
 		}
 	}
 

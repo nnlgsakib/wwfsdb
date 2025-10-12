@@ -12,37 +12,15 @@ import (
 
 // CreateIndex builds and saves a new index for a specific column in a table.
 func CreateIndex(ipfsAPI, dbName string, ddl *sqlparser.DDL) error {
-	sh := shell.NewShell(ipfsAPI)
-
-	db, err := LoadDatabase(sh, dbName)
-	if err != nil {
-		return err
-	}
-
-	newDb, err := CreateIndexDB(sh, db, ddl)
-	if err != nil {
-		return err
-	}
-
-	newDbCID, err := AddObject(sh, newDb)
-	if err != nil {
-		return err
-	}
-
-	UpdateCache(dbName, newDbCID)
-	PublishAsync(sh, dbName, newDbCID)
-
-	return nil
+	// TODO: The vitess-sqlparser does not fully parse CREATE INDEX statements to extract the column name.
+	// This needs to be fixed by either switching to a different parser or by manually parsing the column name from the DDL statement.
+	return fmt.Errorf("CREATE INDEX is not yet fully supported")
 }
 
 // CreateIndexDB builds and saves a new index for a specific column in a table.
 // It operates on an in-memory database object and returns the modified object.
-func CreateIndexDB(sh *shell.Shell, db *pb.Database, ddl *sqlparser.DDL) (*pb.Database, error) {
+func CreateIndexDB(sh *shell.Shell, db *pb.Database, tableName string, columnName string) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
-
-	tableName := ddl.Table.Name.String()
-	// FIXME: This is a placeholder. The column name should be extracted from the ddl.
-	columnName := "id"
 
 	tableCID, ok := newDb.Tables[tableName]
 	if !ok {
