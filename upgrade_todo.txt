@@ -2,14 +2,14 @@
 
 ## Priority 1: Core Functionality Completion
 
-- [ ] 1. Complete the implementation of the LoadDatabase function that is currently truncated in database.go
-- [ ] 2. Complete the implementation of the CreateIndexDB function that is currently truncated in index.go
-- [ ] 3. Complete the implementation of the ProllyTree Put method that is currently truncated in prolly_trees.go
-- [ ] 4. Complete the implementation of the proto file generated code in wwfsdb.pb.go
-- [ ] 5. Complete the implementation of the QueryDB function that is currently truncated in query.go
-- [ ] 6. Complete the implementation of the InsertDB function that is currently truncated in row.go
-- [ ] 7. Complete the implementation of the CommitTransaction method that is currently truncated in server.go
-- [ ] 8. Complete the implementation of the ExecuteQuery method that is currently truncated in service.go
+- [x] 1. Complete the implementation of the LoadDatabase function that is currently truncated in database.go
+- [x] 2. Complete the implementation of the CreateIndexDB function that is currently truncated in index.go
+- [x] 3. Complete the implementation of the ProllyTree Put method that is currently truncated in prolly_trees.go
+- [x] 4. Complete the implementation of the proto file generated code in wwfsdb.pb.go
+- [x] 5. Complete the implementation of the QueryDB function that is currently truncated in query.go
+- [x] 6. Complete the implementation of the InsertDB function that is currently truncated in row.go
+- [x] 7. Complete the implementation of the CommitTransaction method that is currently truncated in server.go
+- [x] 8. Complete the implementation of the ExecuteQuery method that is currently truncated in service.go
 
 ## Priority 2: Data Definition and Manipulation
 
