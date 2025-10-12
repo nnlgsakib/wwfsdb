@@ -90,14 +90,18 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 			}
 
 			expr := rowTuple[i]
-			lit, ok := expr.(*sqlparser.SQLVal)
-			if !ok {
+			var val *anypb.Any
+			var err error
+			switch v := expr.(type) {
+			case *sqlparser.SQLVal:
+				val, err = ValidateAndCastValue(string(v.Val), colInSchema.Type)
+				if err != nil {
+					return nil, fmt.Errorf("validation error for column '%s': %w", colNameStr, err)
+				}
+			case *sqlparser.NullVal:
+				val = nil
+			default:
 				return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
-			}
-
-			val, err := ValidateAndCastValue(string(lit.Val), colInSchema.Type)
-			if err != nil {
-				return nil, fmt.Errorf("validation error for column '%s': %w", colNameStr, err)
 			}
 
 			if colInSchema.IsNotNull && val == nil {
