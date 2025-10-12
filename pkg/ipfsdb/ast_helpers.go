@@ -33,13 +33,24 @@ func extractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {
 }
 
 func extractTableName(tableExpr sqlparser.TableExpr) (string, error) {
-	aliased, ok := tableExpr.(*sqlparser.AliasedTableExpr)
-	if !ok {
+	switch expr := tableExpr.(type) {
+	case *sqlparser.AliasedTableExpr:
+		tableName, ok := expr.Expr.(sqlparser.TableName)
+		if !ok {
+			return "", fmt.Errorf("unsupported table expression type: %T", expr.Expr)
+		}
+		return tableName.Name.String(), nil
+	case *sqlparser.JoinTableExpr:
+		// For JOIN expressions, we need to handle both sides of the join
+		// This is a simplified approach - in practice, you might need more complex handling
+		leftName, err := extractTableName(expr.LeftExpr)
+		if err != nil {
+			return "", err
+		}
+		// We may also need the right table name depending on the context
+		// For now, return the left table name as the primary table name for this function
+		return leftName, nil
+	default:
 		return "", fmt.Errorf("unsupported table expression type: %T", tableExpr)
 	}
-	tableName, ok := aliased.Expr.(sqlparser.TableName)
-	if !ok {
-		return "", fmt.Errorf("unsupported table expression type: %T", aliased.Expr)
-	}
-	return tableName.Name.String(), nil
 }

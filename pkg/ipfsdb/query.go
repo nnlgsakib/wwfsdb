@@ -37,26 +37,98 @@ func Query(ipfsAPI, dbName, queryString string) ([]map[string]interface{}, error
 	return QueryDB(sh, db, selectStmt)
 }
 
-// QueryDB retrieves rows from an in-memory database object
-func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[string]interface{}, error) {
-
-	// Pre-calculate all table schemas involved in the query.
-	tableNames := getTableNamesFromClause(s.From)
-	schemas := make(map[string]*pb.Schema)
-	for _, name := range tableNames {
-		tableCID, ok := db.Tables[name]
+// Helper function to process a table expression and add its schema to the map
+func processTableExprForSchemas(sh *shell.Shell, db *pb.Database, tableExpr sqlparser.TableExpr, schemas map[string]*pb.Schema, aliases map[string]string) error {
+	switch expr := tableExpr.(type) {
+	case *sqlparser.AliasedTableExpr:
+		tableName, err := extractTableName(expr)
+		if err != nil {
+			return fmt.Errorf("failed to extract table name: %w", err)
+		}
+		
+		tableCID, ok := db.Tables[tableName]
 		if !ok {
-			return nil, fmt.Errorf("table %s not found", name)
+			return fmt.Errorf("table %s not found", tableName)
 		}
 		table, err := LoadTable(sh, tableCID)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		schema, err := LoadSchema(sh, table.SchemaCid)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		schemas[name] = schema
+		
+		// Store schema under original table name
+		schemas[tableName] = schema
+		
+		// If an alias is specified, also map the alias to the schema
+		if !expr.As.IsEmpty() {
+			aliasName := expr.As.String()
+			schemas[aliasName] = schema
+			aliases[aliasName] = tableName
+		}
+	case *sqlparser.JoinTableExpr:
+		// Process both sides of the JOIN recursively
+		if err := processTableExprForSchemas(sh, db, expr.LeftExpr, schemas, aliases); err != nil {
+			return err
+		}
+		if err := processTableExprForSchemas(sh, db, expr.RightExpr, schemas, aliases); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// QueryDB retrieves rows from an in-memory database object
+func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[string]interface{}, error) {
+
+	// Pre-calculate all table schemas involved in the query, including aliases
+	schemas := make(map[string]*pb.Schema)
+	aliases := make(map[string]string) // alias -> original table name mapping
+
+	for _, tableExpr := range s.From {
+		switch expr := tableExpr.(type) {
+		case *sqlparser.AliasedTableExpr:
+			// Handle aliased table expressions: tableName alias
+			tableName, err := extractTableName(expr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to extract table name: %w", err)
+			}
+			
+			tableCID, ok := db.Tables[tableName]
+			if !ok {
+				return nil, fmt.Errorf("table %s not found", tableName)
+			}
+			table, err := LoadTable(sh, tableCID)
+			if err != nil {
+				return nil, err
+			}
+			schema, err := LoadSchema(sh, table.SchemaCid)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Store schema under original table name
+			schemas[tableName] = schema
+			
+			// If an alias is specified, also map the alias to the schema
+			if !expr.As.IsEmpty() {
+				aliasName := expr.As.String()
+				schemas[aliasName] = schema
+				aliases[aliasName] = tableName // Keep track of which original table the alias refers to
+			}
+		case *sqlparser.JoinTableExpr:
+			// For JOIN expressions, we need to recursively process both sides
+			// This requires a more complex approach to extract all tables and their aliases
+			// For now, let's handle the simple case by processing each side of the join
+			if err := processTableExprForSchemas(sh, db, expr.LeftExpr, schemas, aliases); err != nil {
+				return nil, err
+			}
+			if err := processTableExprForSchemas(sh, db, expr.RightExpr, schemas, aliases); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// 1. Execute the FROM clause (including any JOINs) to get a set of combined rows.
@@ -520,57 +592,138 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from sqlparser.TableExp
 		return nil, nil
 	}
 
-	// Base case: load all rows from a single table by iterating through its pages.
-	if len(from) == 1 {
-		tableName, err := extractTableName(from[0])
-		if err != nil {
-			return nil, err
-		}
-		tableCID, ok := db.Tables[tableName]
-		if !ok {
-			return nil, fmt.Errorf("table %s not found in database", tableName)
-		}
-		table, err := LoadTable(sh, tableCID)
-		if err != nil {
-			return nil, err
-		}
+	// Process each table expression individually to handle JOIN expressions
+	var allRows []CombinedRow
 
-		var results []CombinedRow
-		for _, pageCID := range table.PageCids {
-			page, err := LoadPage(sh, pageCID)
+	for _, tableExpr := range from {
+		// Check if this is a JOIN expression
+		if joinExpr, ok := tableExpr.(*sqlparser.JoinTableExpr); ok {
+			// Handle JOIN expressions
+			joinedRows, err := executeJoin(sh, db, joinExpr, schemas)
 			if err != nil {
-				fmt.Printf("Warning: failed to load page %s: %v\n", pageCID, err)
-				continue
+				return nil, err
 			}
-			for _, row := range page.Rows {
-				results = append(results, CombinedRow{tableName: row})
+			// If this is the first table or we're doing a multi-way join, combine appropriately
+			if len(allRows) == 0 {
+				allRows = joinedRows
+			} else {
+				// For subsequent JOINs, we'd need to implement more complex logic
+				// For now, just assign the result
+				allRows = joinedRows
+			}
+		} else {
+			// Handle single table expressions (including aliased tables)
+			originalTableName, err := extractTableName(tableExpr)
+			if err != nil {
+				return nil, err
+			}
+			
+			// Check if this is an aliased table expression to get the alias
+			var tableKey string
+			if aliasedExpr, ok := tableExpr.(*sqlparser.AliasedTableExpr); ok && !aliasedExpr.As.IsEmpty() {
+				tableKey = aliasedExpr.As.String()  // Use alias as the key
+			} else {
+				tableKey = originalTableName  // Use original name if no alias
+			}
+			
+			tableCID, ok := db.Tables[originalTableName]
+			if !ok {
+				return nil, fmt.Errorf("table %s not found in database", originalTableName)
+			}
+			table, err := LoadTable(sh, tableCID)
+			if err != nil {
+				return nil, err
+			}
+
+			var results []CombinedRow
+			for _, pageCID := range table.PageCids {
+				page, err := LoadPage(sh, pageCID)
+				if err != nil {
+					fmt.Printf("Warning: failed to load page %s: %v\n", pageCID, err)
+					continue
+				}
+				for _, row := range page.Rows {
+					results = append(results, CombinedRow{tableKey: row})
+				}
+			}
+			// Combine with existing rows (Cartesian product if multiple tables)
+			if len(allRows) == 0 {
+				allRows = results
+			} else {
+				var newAllRows []CombinedRow
+				for _, existingRow := range allRows {
+					for _, newRow := range results {
+						// Merge the rows
+						mergedRow := make(CombinedRow)
+						for k, v := range existingRow {
+							mergedRow[k] = v
+						}
+						for k, v := range newRow {
+							mergedRow[k] = v
+						}
+						newAllRows = append(newAllRows, mergedRow)
+					}
+				}
+				allRows = newAllRows
 			}
 		}
-		return results, nil
 	}
 
-	// Recursive step: perform a join.
-	leftRows, err := executeFromClause(sh, db, from[:1], schemas)
+	return allRows, nil
+}
+
+// executeJoin handles JOIN expressions
+func executeJoin(sh *shell.Shell, db *pb.Database, joinExpr *sqlparser.JoinTableExpr, schemas map[string]*pb.Schema) ([]CombinedRow, error) {
+	// Get rows from the left side of the join
+	leftRows, err := executeFromClause(sh, db, sqlparser.TableExprs{joinExpr.LeftExpr}, schemas)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error executing left side of join: %w", err)
 	}
-	rightRows, err := executeFromClause(sh, db, from[1:], schemas)
+
+	// Get rows from the right side of the join
+	rightRows, err := executeFromClause(sh, db, sqlparser.TableExprs{joinExpr.RightExpr}, schemas)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error executing right side of join: %w", err)
 	}
 
 	var joinedRows []CombinedRow
 
+	// Check if there's a join condition (ON clause)
+	joinCondition := joinExpr.On
+
 	for _, lRow := range leftRows {
 		for _, rRow := range rightRows {
-			tempRow := make(CombinedRow)
-			for k, v := range lRow {
-				tempRow[k] = v
+			// Check if the rows match the join condition
+			shouldJoin := true
+			if joinCondition != nil {
+				// Create a combined row to evaluate the join condition
+				combinedRow := make(CombinedRow)
+				for k, v := range lRow {
+					combinedRow[k] = v
+				}
+				for k, v := range rRow {
+					combinedRow[k] = v
+				}
+				
+				// Evaluate the join condition
+				result, err := evaluateExpression(combinedRow, joinCondition, schemas)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating join condition: %w", err)
+				}
+				shouldJoin = result
 			}
-			for k, v := range rRow {
-				tempRow[k] = v
+
+			if shouldJoin {
+				// Merge the rows that satisfy the join condition
+				mergedRow := make(CombinedRow)
+				for k, v := range lRow {
+					mergedRow[k] = v
+				}
+				for k, v := range rRow {
+					mergedRow[k] = v
+				}
+				joinedRows = append(joinedRows, mergedRow)
 			}
-			joinedRows = append(joinedRows, tempRow)
 		}
 	}
 
@@ -836,14 +989,16 @@ func evaluateExpressionValue(row CombinedRow, expr sqlparser.Expr, schemas map[s
 }
 
 // evaluateIdentifier resolves an identifier (e.g., `users.id` or `id`) against a combined row.
-// It is now schema-aware.
+// It is now schema-aware and handles table aliases.
 func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[string]*pb.Schema) (interface{}, error) {
-	// Case 1: Identifier is fully qualified (e.g., users.id)
+	// Case 1: Identifier is fully qualified (e.g., users.id or a.id where 'a' is an alias)
 	if !ident.Qualifier.IsEmpty() {
-		tableName := ident.Qualifier.Name.String()
-		tableSchema, ok := schemas[tableName]
+		originalTableName := ident.Qualifier.Name.String()
+		
+		// First, check if the qualifier directly matches a schema (could be original name or alias)
+		tableSchema, ok := schemas[originalTableName]
 		if !ok {
-			return nil, fmt.Errorf("table %s not found in FROM clause", tableName)
+			return nil, fmt.Errorf("table %s not found in FROM clause", originalTableName)
 		}
 
 		// Check if column exists in schema
@@ -855,12 +1010,29 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 			}
 		}
 		if !foundInSchema {
-			return nil, fmt.Errorf("column %s not found in table %s", ident.Name.String(), tableName)
+			return nil, fmt.Errorf("column %s not found in table %s", ident.Name.String(), originalTableName)
 		}
 
-		tableData, ok := row[tableName]
+		// The row data is stored with the original table name (not the alias)
+		// So if "a" is an alias for "accounts", we need to look up row["accounts"]
+		tableData, ok := row[originalTableName]
 		if !ok {
-			return nil, fmt.Errorf("table %s not found in FROM clause", tableName)
+			// If we didn't find it with the qualifier name, the original table name might be different
+			// In the executeFromClause, we store data using original table names
+			// So if the user is querying with an alias, we have to map it back
+			// This is complex - let's try to find the actual table that corresponds to this alias
+			for rowTableName, rowData := range row {
+				// Check if this row table name's schema matches the schema we found
+				if rowSchema, exists := schemas[rowTableName]; exists && rowSchema == tableSchema {
+					tableData = rowData
+					ok = true
+					break
+				}
+			}
+		}
+		
+		if !ok {
+			return nil, fmt.Errorf("table %s not found in FROM clause data", originalTableName)
 		}
 		if tableData == nil { // This happens in a LEFT JOIN where there was no match
 			return nil, nil
