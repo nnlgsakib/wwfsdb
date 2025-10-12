@@ -798,6 +798,38 @@ func evaluateExpressionValue(row CombinedRow, expr sqlparser.Expr, schemas map[s
 			return nil, fmt.Errorf("unary minus operator can only be applied to numbers")
 		}
 		return nil, fmt.Errorf("unsupported prefix operator: %s", e.Operator)
+	case *sqlparser.BinaryExpr:
+		left, err := evaluateExpressionValue(row, e.Left, schemas)
+		if err != nil {
+			return nil, err
+		}
+		right, err := evaluateExpressionValue(row, e.Right, schemas)
+		if err != nil {
+			return nil, err
+		}
+
+		leftNum, leftIsNum := getNumericValue(left)
+		rightNum, rightIsNum := getNumericValue(right)
+
+		if !leftIsNum || !rightIsNum {
+			return nil, fmt.Errorf("arithmetic operations can only be performed on numbers, got %T and %T", left, right)
+		}
+
+		switch e.Operator {
+		case "+":
+			return leftNum + rightNum, nil
+		case "-":
+			return leftNum - rightNum, nil
+		case "*":
+			return leftNum * rightNum, nil
+		case "/":
+			if rightNum == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return leftNum / rightNum, nil
+		default:
+			return nil, fmt.Errorf("unsupported binary operator: %s", e.Operator)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported expression value type: %T", e)
 	}

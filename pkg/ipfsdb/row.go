@@ -226,36 +226,6 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 	}
 	schemas := map[string]*pb.Schema{tableName: schema}
 
-	if len(update.Exprs) != 1 {
-		return nil, 0, fmt.Errorf("multiple SET clauses not yet supported")
-	}
-	setColumn := update.Exprs[0].Name.Name.String()
-	setValue := update.Exprs[0].Expr
-
-	var columnType string
-	columnExists := false
-	for _, col := range schema.Columns {
-		if col.Name == setColumn {
-			columnType = col.Type
-			columnExists = true
-			break
-		}
-	}
-	if !columnExists {
-		return nil, 0, fmt.Errorf("column '%s' not found in table '%s'", setColumn, tableName)
-	}
-
-	lit, ok := setValue.(*sqlparser.SQLVal)
-	if !ok {
-		return nil, 0, fmt.Errorf("unsupported expression type in SET clause: %T", setValue)
-	}
-	valueStr := string(lit.Val)
-
-	castedValue, err := ValidateAndCastValue(valueStr, columnType)
-	if err != nil {
-		return nil, 0, fmt.Errorf("validation error for column '%s': %w", setColumn, err)
-	}
-
 	var updatedCount int
 	for i, pageCID := range table.PageCids {
 		page, err := LoadPage(sh, pageCID)
@@ -265,22 +235,42 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 
 		pageModified := false
 		for _, row := range page.Rows {
-			shouldInclude := update.Where == nil || update.Where.Expr == nil
-			if !shouldInclude {
+			// Check if the row matches the WHERE clause
+			shouldUpdate := update.Where == nil || update.Where.Expr == nil
+			if !shouldUpdate {
 				include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
 				if err != nil {
 					return nil, 0, err
 				}
-				shouldInclude = include
+				shouldUpdate = include
 			}
 
-			if shouldInclude {
+			if shouldUpdate {
 				oldRow := proto.Clone(row).(*pb.Row)
 
-				row.Values[setColumn] = castedValue
+				// Apply the SET expressions
+				for _, updateExpr := range update.Exprs {
+					setColumn := updateExpr.Name.Name.String()
+
+					// Evaluate the expression on the right side of the SET clause
+					newValue, err := evaluateExpressionValue(CombinedRow{tableName: row}, updateExpr.Expr, schemas)
+					if err != nil {
+						return nil, 0, fmt.Errorf("error evaluating SET expression: %w", err)
+					}
+
+					// Convert the evaluated value to an Any type for storage
+					castedValue, err := ToAny(newValue)
+					if err != nil {
+						return nil, 0, fmt.Errorf("error casting new value for column '%s': %w", setColumn, err)
+					}
+
+					row.Values[setColumn] = castedValue
+				}
+
 				pageModified = true
 				updatedCount++
 
+				// Update indexes based on the changes
 				table, err = UpdateIndexesOnDelete(sh, table, pageCID, page, oldRow)
 				if err != nil {
 					return nil, 0, fmt.Errorf("failed to update indexes on delete part of update: %w", err)
