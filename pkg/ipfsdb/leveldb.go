@@ -36,3 +36,10 @@ func GetFromCache(key []byte) ([]byte, error) {
 	}
 	return db.Get(key, nil)
 }
+
+func DeleteFromCache(key []byte) error {
+	if db == nil {
+		return fmt.Errorf("cache not initialized")
+	}
+	return db.Delete(key, nil)
+}

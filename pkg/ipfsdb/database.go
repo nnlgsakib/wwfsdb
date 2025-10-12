@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -103,7 +101,7 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*pb.Database, error) {
 		}
 
 		// 3. Resolve the IPNS name to get the database CID
-	dbCID, err = sh.Resolve(entry.ProgramId)
+		dbCID, err = sh.Resolve(entry.ProgramId)
 		if err != nil {
 			return nil, err
 		}
@@ -147,31 +145,14 @@ func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// Use the new parser
-	stmt, err := ssql.Parse(query)
+	stmt, err := sqlparser.Parse(query)
 	if err != nil {
-		// Also try parsing as a multi-statement script for CREATE TABLE files
-		if stmts, err2 := ssql.ParseMultiple(query); err2 == nil && len(stmts) > 0 {
-			// For now, we only support multi-statement scripts for CREATE TABLE
-			var results []string
-			for _, s := range stmts {
-				if ct, ok := s.(*ast.CreateTableStmt); ok {
-					_, err := Migrate(ipfsAPI, dbName, ct.Name, &ct.Schema)
-					if err != nil {
-						return "", err
-					}
-					results = append(results, fmt.Sprintf("Table '%s' created successfully in database '%s'.", ct.Name, dbName))
-				} else {
-					return "", fmt.Errorf("unsupported statement in multi-statement query: %T", s)
-				}
-			}
-			return strings.Join(results, "\n"), nil
-		}
-		return "", err // Return original error if multi-parse also fails
+		return "", err
 	}
 
 	// Handle CREATE DATABASE separately as it doesn't operate on an existing DB
-	if s, ok := stmt.(*ast.CreateDatabaseStmt); ok {
-		result, err := CreateDatabase(ipfsAPI, s.Name)
+	if s, ok := stmt.(*sqlparser.DDL); ok && s.Action == sqlparser.CreateStr {
+		result, err := CreateDatabase(ipfsAPI, s.NewName.Name.String())
 		if err != nil {
 			return "", err
 		}
@@ -203,7 +184,7 @@ func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 	}
 
 	// For read queries, just return the result
-	if _, ok := stmt.(*ast.SelectStmt); ok {
+	if _, ok := stmt.(*sqlparser.Select); ok {
 		return result, nil
 	}
 
@@ -222,27 +203,38 @@ func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 // ExecuteOnDB executes a statement against an in-memory database object.
 // It returns the potentially modified database state and a result string.
 // It does NOT save or publish the result.
-func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.Statement) (*pb.Database, string, error) {
+func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt sqlparser.Statement) (*pb.Database, string, error) {
 	switch s := stmt.(type) {
-	case *ast.CreateTableStmt:
-		newDb, err := MigrateDB(sh, db, s.Name, &s.Schema)
+	case *sqlparser.CreateTable:
+		newDb, err := MigrateDB(sh, db, s.NewName.Name.String(), s)
 		if err != nil {
 			return nil, "", err
 		}
-		return newDb, fmt.Sprintf("Table '%s' created successfully in database '%s'.", s.Name, dbName), nil
-	case *ast.DropTableStmt:
-		newDb, err := DropDB(sh, db, s.Name)
-		if err != nil {
-			return nil, "", err
+		return newDb, fmt.Sprintf("Table '%s' created successfully in database '%s'.", s.NewName.Name.String(), dbName), nil
+	case *sqlparser.DDL:
+		switch s.Action {
+		case sqlparser.DropStr:
+			newDb, err := DropDB(sh, db, s)
+			if err != nil {
+				return nil, "", err
+			}
+			return newDb, fmt.Sprintf("Table '%s' dropped successfully.", s.Table.Name.String()), nil
+		case sqlparser.AlterStr:
+			newDb, err := AlterTableDB(sh, db, s.Table.Name.String(), s)
+			if err != nil {
+				return nil, "", err
+			}
+			return newDb, fmt.Sprintf("Table '%s' altered successfully.", s.Table.Name.String()), nil
+		case sqlparser.RenameStr:
+			newDb, err := RenameTableDB(sh, db, s)
+			if err != nil {
+				return nil, "", err
+			}
+			return newDb, fmt.Sprintf("Table '%s' renamed to '%s' successfully.", s.Table.Name.String(), s.NewName.Name.String()), nil
+		default:
+			return nil, "", fmt.Errorf("unsupported DDL action: %s", s.Action)
 		}
-		return newDb, fmt.Sprintf("Table '%s' dropped successfully.", s.Name), nil
-	case *ast.AlterTableStmt:
-		newDb, err := AlterTableDB(sh, db, s.Table, s.Action)
-		if err != nil {
-			return nil, "", err
-		}
-		return newDb, fmt.Sprintf("Table '%s' altered successfully.", s.Table), nil
-	case *ast.SelectStmt:
+	case *sqlparser.Select:
 		rows, err := QueryDB(sh, db, s)
 		if err != nil {
 			return nil, "", err
@@ -252,44 +244,32 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt ast.State
 			return nil, "", fmt.Errorf("failed to marshal result to JSON: %w", err)
 		}
 		return db, string(jsonResult), nil // db is not modified
-	case *ast.InsertStmt:
-		newDb, err := InsertDB(sh, db, s.Table, s.Values)
+	case *sqlparser.Insert:
+		newDb, err := InsertDB(sh, db, s.Table.Name.String(), s)
 		if err != nil {
 			return nil, "", err
 		}
 		return newDb, "INSERT successful", nil
-	case *ast.UpdateStmt:
-		newDb, affectedRows, err := UpdateDB(sh, db, s.Table, s.Set.Column, s.Set.Value, s.Where)
+	case *sqlparser.Update:
+		newDb, affectedRows, err := UpdateDB(sh, db, s.TableExprs[0].(*sqlparser.AliasedTableExpr).Expr.(sqlparser.TableName).Name.String(), s)
 		if err != nil {
 			return nil, "", err
 		}
 		return newDb, fmt.Sprintf("UPDATE successful. %d rows affected.", affectedRows), nil
-	case *ast.DeleteStmt:
-		newDb, affectedRows, err := DeleteDB(sh, db, s.Table, s.Where)
+	case *sqlparser.Delete:
+		newDb, affectedRows, err := DeleteDB(sh, db, s.TableExprs[0].(*sqlparser.AliasedTableExpr).Expr.(sqlparser.TableName).Name.String(), s)
 		if err != nil {
 			return nil, "", err
 		}
 		return newDb, fmt.Sprintf("DELETE successful. %d rows affected.", affectedRows), nil
-	case *ast.CreateIndexStmt:
-		newDb, err := CreateIndexDB(sh, db, s.Table, s.Column)
-		if err != nil {
-			return nil, "", err
-		}
-		return newDb, fmt.Sprintf("Index on column '%s' for table '%s' created successfully.", s.Column, s.Table), nil
-	// These are handled by the dispatcher, but we can add a safeguard.
-	case *ast.BeginStmt, *ast.CommitStmt, *ast.RollbackStmt:
-		return nil, "", fmt.Errorf("transaction control statements cannot be executed in this context")
-	// CreateDatabase is also handled separately.
-	case *ast.CreateDatabaseStmt:
-		return nil, "", fmt.Errorf("CREATE DATABASE cannot be run within a database context or transaction")
 	default:
 		return nil, "", fmt.Errorf("unsupported query type: %T", s)
 	}
 }
 
 // IsReadQuery checks if a statement is a read-only query.
-func IsReadQuery(stmt ast.Statement) bool {
-	_, ok := stmt.(*ast.SelectStmt)
+func IsReadQuery(stmt sqlparser.Statement) bool {
+	_, ok := stmt.(*sqlparser.Select)
 	return ok
 }
 
@@ -312,4 +292,8 @@ func VerifySignature(db *pb.Database, dbName, query, signature string) error {
 		return fmt.Errorf("invalid signature")
 	}
 	return nil
+}
+
+func DeleteDatabase(dbName string) error {
+	return DeleteFromCache([]byte("registry:" + dbName))
 }

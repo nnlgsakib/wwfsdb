@@ -6,13 +6,12 @@ import (
 
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"google.golang.org/protobuf/proto"
 )
 
 // Migrate adds a new table to the database
-func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, error) {
+func Migrate(ipfsAPI, dbName, tableName string, stmt sqlparser.Statement) (string, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -21,7 +20,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 		return "", err
 	}
 
-	newDb, err := MigrateDB(sh, db, tableName, schema)
+	newDb, err := MigrateDB(sh, db, tableName, stmt)
 	if err != nil {
 		return "", err
 	}
@@ -42,7 +41,7 @@ func Migrate(ipfsAPI, dbName, tableName string, schema *ssql.Schema) (string, er
 }
 
 // MigrateDB adds a new table to an in-memory database object
-func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, schema *ssql.Schema) (*pb.Database, error) {
+func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, stmt sqlparser.Statement) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
 	// Check if table already exists
@@ -50,10 +49,10 @@ func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, schema *ssql.
 		return nil, fmt.Errorf("table '%s' already exists in database", tableName)
 	}
 
-	// 2. Convert ssql.Schema to pb.Schema and add to IPFS
-	pbSchema := &pb.Schema{}
-	for _, col := range schema.Columns {
-		pbSchema.Columns = append(pbSchema.Columns, &pb.Column{Name: col.Name, Type: col.Type})
+	// 2. Convert sqlparser.Statement to pb.Schema and add to IPFS
+	pbSchema, err := extractSchemaFromDDL(stmt)
+	if err != nil {
+		return nil, err
 	}
 	schemaCID, err := AddObject(sh, pbSchema)
 	if err != nil {
@@ -103,7 +102,7 @@ func LoadTable(sh *shell.Shell, tableCID string) (*pb.Table, error) {
 }
 
 // Drop removes a table from the database
-func Drop(ipfsAPI, dbName, tableName string) error {
+func Drop(ipfsAPI, dbName string, ddl *sqlparser.DDL) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	// 1. Load the database
@@ -112,7 +111,7 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 		return err
 	}
 
-	newDb, err := DropDB(sh, db, tableName)
+	newDb, err := DropDB(sh, db, ddl)
 	if err != nil {
 		return err
 	}
@@ -132,9 +131,10 @@ func Drop(ipfsAPI, dbName, tableName string) error {
 }
 
 // DropDB removes a table from an in-memory database object
-func DropDB(sh *shell.Shell, db *pb.Database, tableName string) (*pb.Database, error) {
+func DropDB(sh *shell.Shell, db *pb.Database, ddl *sqlparser.DDL) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
+	tableName := ddl.Table.Name.String()
 	// 2. Check if the table exists
 	if _, ok := newDb.Tables[tableName]; !ok {
 		return nil, fmt.Errorf("table %s not found in database", tableName)
@@ -147,7 +147,7 @@ func DropDB(sh *shell.Shell, db *pb.Database, tableName string) (*pb.Database, e
 }
 
 // AlterTableDB modifies an existing table's schema.
-func AlterTableDB(sh *shell.Shell, db *pb.Database, tableName string, action ast.AlterTableAction) (*pb.Database, error) {
+func AlterTableDB(sh *shell.Shell, db *pb.Database, tableName string, ddl *sqlparser.DDL) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
 	tableCID, ok := newDb.Tables[tableName]
@@ -167,49 +167,7 @@ func AlterTableDB(sh *shell.Shell, db *pb.Database, tableName string, action ast
 
 	newSchema := proto.Clone(schema).(*pb.Schema)
 
-	switch act := action.(type) {
-	case *ast.AddColumnClause:
-		for _, c := range newSchema.Columns {
-			if c.Name == act.Column.Name {
-				return nil, fmt.Errorf("column '%s' already exists in table '%s'", act.Column.Name, tableName)
-			}
-		}
-		newSchema.Columns = append(newSchema.Columns, &pb.Column{Name: act.Column.Name, Type: act.Column.Type})
-
-	case *ast.DropColumnClause:
-		found := false
-		newColumns := []*pb.Column{}
-		for _, c := range newSchema.Columns {
-			if c.Name == act.ColumnName {
-				found = true
-			} else {
-				newColumns = append(newColumns, c)
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("column '%s' not found in table '%s'", act.ColumnName, tableName)
-		}
-		newSchema.Columns = newColumns
-
-	case *ast.RenameColumnClause:
-		found := false
-		for _, c := range newSchema.Columns {
-			if c.Name == act.OldName {
-				c.Name = act.NewName
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, fmt.Errorf("column '%s' not found in table '%s'", act.OldName, tableName)
-		}
-		// IMPORTANT: This just renames the column in the schema.
-		// Existing data rows will still have the old column name as the key.
-		// A full data migration is required to update existing rows, which is a more complex operation.
-
-	default:
-		return nil, fmt.Errorf("unsupported ALTER TABLE action")
-	}
+	// TODO: Implement logic to handle different alteration types from the vitess-sqlparser AST
 
 	// Save the new schema to IPFS
 	newSchemaCID, err := AddObject(sh, newSchema)
@@ -249,4 +207,25 @@ func LoadSchema(sh *shell.Shell, schemaCID string) (*pb.Schema, error) {
 	}
 
 	return &schema, nil
+}
+
+func RenameTableDB(sh *shell.Shell, db *pb.Database, ddl *sqlparser.DDL) (*pb.Database, error) {
+	newDb := proto.Clone(db).(*pb.Database)
+
+	oldTableName := ddl.Table.Name.String()
+	newTableName := ddl.NewName.Name.String()
+
+	tableCID, ok := newDb.Tables[oldTableName]
+	if !ok {
+		return nil, fmt.Errorf("table %s not found in database", oldTableName)
+	}
+
+	if _, ok := newDb.Tables[newTableName]; ok {
+		return nil, fmt.Errorf("table %s already exists in database", newTableName)
+	}
+
+	delete(newDb.Tables, oldTableName)
+	newDb.Tables[newTableName] = tableCID
+
+	return newDb, nil
 }

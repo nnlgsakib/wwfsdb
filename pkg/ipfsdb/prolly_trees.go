@@ -116,9 +116,9 @@ func (t *ProllyTree) Put(key, value string) (*ProllyTree, error) {
 	return &ProllyTree{RootCID: newRootCID, sh: t.sh}, nil
 }
 
-// Delete removes a key and its values from the tree.
-func (t *ProllyTree) Delete(key string) (*ProllyTree, error) {
-	newRootCID, err := t.recursiveDelete(t.RootCID, key)
+// Delete removes a key-value pair from the tree.
+func (t *ProllyTree) Delete(key, value string) (*ProllyTree, error) {
+	newRootCID, err := t.recursiveDelete(t.RootCID, key, value)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (t *ProllyTree) recursivePut(nodeCID, key, value string) (string, string, s
 	return newCID, "", "", err
 }
 
-func (t *ProllyTree) recursiveDelete(nodeCID, key string) (string, error) {
+func (t *ProllyTree) recursiveDelete(nodeCID, key, value string) (string, error) {
 	node, err := t.loadNode(nodeCID)
 	if err != nil {
 		return "", err
@@ -250,13 +250,26 @@ func (t *ProllyTree) recursiveDelete(nodeCID, key string) (string, error) {
 
 	if node.IsLeaf {
 		if i < len(node.Keys) && node.Keys[i] == key {
-			node.Keys = append(node.Keys[:i], node.Keys[i+1:]...)
-			node.Values = append(node.Values[:i], node.Values[i+1:]...)
+			// Find the value and remove it
+			values := node.Values[i].Values
+			newValues := []string{}
+			for _, v := range values {
+				if v != value {
+					newValues = append(newValues, v)
+				}
+			}
+			if len(newValues) == 0 {
+				// If no values are left, delete the key
+				node.Keys = append(node.Keys[:i], node.Keys[i+1:]...)
+				node.Values = append(node.Values[:i], node.Values[i+1:]...)
+			} else {
+				node.Values[i].Values = newValues
+			}
 		} else {
 			return nodeCID, nil // Key not found, no change
 		}
 	} else { // Internal node
-		newChildCID, err := t.recursiveDelete(node.Children[i], key)
+		newChildCID, err := t.recursiveDelete(node.Children[i], key, value)
 		if err != nil {
 			return "", err
 		}

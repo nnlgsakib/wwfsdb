@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
 	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -27,10 +27,11 @@ type WWFS struct {
 
 // ExecuteQueryArgs holds the arguments for the ExecuteQuery method.
 type ExecuteQueryArgs struct {
-	DbName    string `json:"db_name"`
-	Query     string `json:"query"`
-	SessionID string `json:"session_id,omitempty"`
-	Signature string `json:"signature,omitempty"`
+	DbName     string `json:"db_name"`
+	Query      string `json:"query"`
+	SessionID  string `json:"session_id,omitempty"`
+	Signature  string `json:"signature,omitempty"`
+	PrivateKey string `json:"private_key,omitempty"`
 }
 
 // ExecuteQueryResult holds the result for the ExecuteQuery method.
@@ -41,41 +42,75 @@ type ExecuteQueryResult struct {
 
 // ExecuteQuery is the RPC method that executes a SQL query against the database.
 func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *ExecuteQueryResult) error {
-	stmt, err := ssql.Parse(args.Query)
+	// Custom parsing for CREATE DATABASE
+	if strings.HasPrefix(strings.ToUpper(args.Query), "CREATE DATABASE") {
+		parts := strings.Fields(args.Query)
+		if len(parts) != 3 {
+			return fmt.Errorf("invalid CREATE DATABASE syntax. Expected: CREATE DATABASE <db_name>")
+		}
+		dbName := parts[2]
+
+		// Call the CreateDatabase function directly
+		result, err := ipfsdb.CreateDatabase(h.Dispatcher.ipfsApi, dbName)
+		if err != nil {
+			return err
+		}
+		jsonResult, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("failed to marshal create database result: %w", err)
+		}
+		reply.Result = string(jsonResult)
+		return nil
+	}
+
+	// If private key is provided, create signature
+	if args.PrivateKey != "" {
+		message := fmt.Sprintf("%s:%s", args.DbName, args.Query)
+		signature, err := auth.Sign(args.PrivateKey, message)
+		if err != nil {
+			return fmt.Errorf("failed to sign query: %w", err)
+		}
+		args.Signature = signature
+	}
+
+	stmt, err := sqlparser.Parse(args.Query)
 	if err != nil {
 		return fmt.Errorf("parser error: %w", err)
 	}
 
 	// Handle transaction control statements directly
-	switch stmt.(type) {
-	case *ast.BeginStmt:
-		sessionID, err := h.Dispatcher.BeginTransaction(args.DbName)
-		if err != nil {
-			return err
+	switch s := stmt.(type) {
+	case *sqlparser.DDL:
+		switch s.Action {
+		case "begin":
+			sessionID, err := h.Dispatcher.BeginTransaction(args.DbName)
+			if err != nil {
+				return err
+			}
+			reply.SessionID = sessionID
+			reply.Result = "Transaction started"
+			return nil
+		case "commit":
+			if args.SessionID == "" {
+				return fmt.Errorf("no transaction in progress to commit")
+			}
+			result, err := h.Dispatcher.CommitTransaction(args.SessionID)
+			if err != nil {
+				return err
+			}
+			reply.Result = result
+			return nil
+		case "rollback":
+			if args.SessionID == "" {
+				return fmt.Errorf("no transaction in progress to rollback")
+			}
+			err := h.Dispatcher.RollbackTransaction(args.SessionID)
+			if err != nil {
+				return err
+			}
+			reply.Result = "Transaction rolled back"
+			return nil
 		}
-		reply.SessionID = sessionID
-		reply.Result = "Transaction started"
-		return nil
-	case *ast.CommitStmt:
-		if args.SessionID == "" {
-			return fmt.Errorf("no transaction in progress to commit")
-		}
-		result, err := h.Dispatcher.CommitTransaction(args.SessionID)
-		if err != nil {
-			return err
-		}
-		reply.Result = result
-		return nil
-	case *ast.RollbackStmt:
-		if args.SessionID == "" {
-			return fmt.Errorf("no transaction in progress to rollback")
-		}
-		err := h.Dispatcher.RollbackTransaction(args.SessionID)
-		if err != nil {
-			return err
-		}
-		reply.Result = "Transaction rolled back"
-		return nil
 	}
 
 	// If in a transaction, dispatch to the transaction handler
@@ -90,7 +125,7 @@ func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *Exec
 
 	// --- Original non-transactional execution path ---
 	// For read-only queries or single auto-committed statements
-	if _, ok := stmt.(*ast.SelectStmt); !ok {
+	if _, ok := stmt.(*sqlparser.Select); !ok {
 		// This is a write operation outside a transaction, use the old queue system
 		job := Job{
 			DbName:    args.DbName,
@@ -350,5 +385,24 @@ func (h *WWFS) ForkDatabase(r *http.Request, args *ForkDatabaseArgs, reply *Fork
 	reply.ProgramID = key.Id
 	reply.PrivateKey = privKeyStr
 
+	return nil
+}
+
+// --- Method: wwfs_deleteDatabase ---
+
+type DeleteDatabaseArgs struct {
+	DbName string `json:"db_name"`
+}
+
+type DeleteDatabaseResult struct {
+	Result string `json:"result"`
+}
+
+func (h *WWFS) DeleteDatabase(r *http.Request, args *DeleteDatabaseArgs, reply *DeleteDatabaseResult) error {
+	err := ipfsdb.DeleteDatabase(args.DbName)
+	if err != nil {
+		return err
+	}
+	reply.Result = fmt.Sprintf("Database '%s' has been deleted from the local registry.", args.DbName)
 	return nil
 }

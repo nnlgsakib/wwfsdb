@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFT Marketplace</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="bg-light border-bottom">
+        <div class="container">
+            <h1 class="text-center py-4">NFT Marketplace</h1>
+        </div>
+    </header>
+
+    <main class="container my-4">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Users</h2>
+                        <div id="users-list"></div>
+                        <h3 class="mt-4">Create User</h3>
+                        <form id="create-user-form">
+                            <input type="number" id="user-id" class="form-control mb-2" placeholder="User ID" required>
+                            <input type="text" id="username" class="form-control mb-2" placeholder="Username" required>
+                            <input type="text" id="wallet-address" class="form-control mb-2" placeholder="Wallet Address" required>
+                            <input type="text" id="user-created-at" class="form-control mb-2" placeholder="Created At" required>
+                            <input type="text" id="user-updated-at" class="form-control mb-2" placeholder="Updated At" required>
+                            <input type="text" id="user-profile-image-url" class="form-control mb-2" placeholder="Profile Image URL" required>
+                            <input type="text" id="user-bio" class="form-control mb-2" placeholder="Bio" required>
+                            <button type="submit" class="btn btn-primary">Create User</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Collections</h2>
+                        <div id="collections-list"></div>
+                        <h3 class="mt-4">Create Collection</h3>
+                        <form id="create-collection-form">
+                            <input type="number" id="collection-id" class="form-control mb-2" placeholder="Collection ID" required>
+                            <input type="text" id="collection-name" class="form-control mb-2" placeholder="Collection Name" required>
+                            <input type="text" id="collection-description" class="form-control mb-2" placeholder="Description" required>
+                            <input type="number" id="collection-creator-id" class="form-control mb-2" placeholder="Creator ID" required>
+                            <button type="submit" class="btn btn-primary">Create Collection</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Categories</h2>
+                        <div id="categories-list"></div>
+                        <h3 class="mt-4">Create Category</h3>
+                        <form id="create-category-form">
+                            <input type="number" id="category-id" class="form-control mb-2" placeholder="Category ID" required>
+                            <input type="text" id="category-name" class="form-control mb-2" placeholder="Category Name" required>
+                            <button type="submit" class="btn btn-primary">Create Category</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">NFTs</h2>
+                        <div id="nfts-list"></div>
+                        <h3 class="mt-4">Create NFT</h3>
+                        <form id="create-nft-form">
+                            <input type="number" id="nft-id" class="form-control mb-2" placeholder="NFT ID" required>
+                            <input type="text" id="nft-name" class="form-control mb-2" placeholder="NFT Name" required>
+                            <input type="text" id="nft-description" class="form-control mb-2" placeholder="Description" required>
+                            <input type="text" id="nft-image-url" class="form-control mb-2" placeholder="Image URL" required>
+                            <input type="number" id="nft-owner-id" class="form-control mb-2" placeholder="Owner ID" required>
+                            <input type="number" id="nft-creator-id" class="form-control mb-2" placeholder="Creator ID" required>
+                            <input type="number" id="nft-price" class="form-control mb-2" placeholder="Price" step="0.01" required>
+                            <input type="text" id="nft-created-at" class="form-control mb-2" placeholder="Created At" required>
+                            <input type="text" id="nft-updated-at" class="form-control mb-2" placeholder="Updated At" required>
+                            <input type="number" id="nft-collection-id" class="form-control mb-2" placeholder="Collection ID" required>
+                            <input type="number" id="nft-category-id" class="form-control mb-2" placeholder="Category ID" required>
+                            <button type="submit" class="btn btn-primary">Create NFT</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-12">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Transactions</h2>
+                        <div id="transactions-list"></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Bids</h2>
+                        <div id="bids-list"></div>
+                        <h3 class="mt-4">Create Bid</h3>
+                        <form id="create-bid-form">
+                            <input type="number" id="bid-id" class="form-control mb-2" placeholder="Bid ID" required>
+                            <input type="number" id="bid-nft-id" class="form-control mb-2" placeholder="NFT ID" required>
+                            <input type="number" id="bidder-id" class="form-control mb-2" placeholder="Bidder ID" required>
+                            <input type="number" id="bid-amount" class="form-control mb-2" placeholder="Amount" step="0.01" required>
+                            <input type="text" id="bid-date" class="form-control mb-2" placeholder="Date" required>
+                            <button type="submit" class="btn btn-primary">Create Bid</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-6">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">Tags</h2>
+                        <div id="tags-list"></div>
+                        <h3 class="mt-4">Create Tag</h3>
+                        <form id="create-tag-form">
+                            <input type="number" id="tag-id" class="form-control mb-2" placeholder="Tag ID" required>
+                            <input type="text" id="tag-name" class="form-control mb-2" placeholder="Tag Name" required>
+                            <button type="submit" class="btn btn-primary">Create Tag</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <div class="col-md-12">
+                <section class="section card">
+                    <div class="card-body">
+                        <h2 class="card-title">NFT Tags</h2>
+                        <div id="nft-tags-list"></div>
+                        <h3 class="mt-4">Create NFT Tag</h3>
+                        <form id="create-nft-tag-form">
+                            <input type="number" id="nft-tag-nft-id" class="form-control mb-2" placeholder="NFT ID" required>
+                            <input type="number" id="nft-tag-tag-id" class="form-control mb-2" placeholder="Tag ID" required>
+                            <button type="submit" class="btn btn-primary">Create NFT Tag</button>
+                        </form>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script src="script.js"></script>
+</body>
+</html>

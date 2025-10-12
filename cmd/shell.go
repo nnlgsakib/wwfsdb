@@ -9,8 +9,7 @@ import (
 	"strings"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -67,7 +66,7 @@ Example:
 			// --- Client-side check for transaction commands ---
 			trimmedQuery := strings.TrimSpace(strings.ToUpper(strings.TrimRight(queryString, "; ")))
 
-			stmt, err := ssql.Parse(queryString)
+			stmt, err := sqlparser.Parse(queryString)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
 				continue
@@ -93,7 +92,7 @@ Example:
 
 			// Handle different statement types
 			switch stmt.(type) {
-			case *ast.SelectStmt:
+			case *sqlparser.Select:
 				var rows []map[string]interface{}
 				if err := json.Unmarshal([]byte(result.Result), &rows); err != nil {
 					fmt.Fprintln(os.Stderr, "Error unmarshalling result:", err)

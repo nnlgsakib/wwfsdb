@@ -283,3 +283,49 @@ func (c *RpcClient) ForkDatabase(newDbName, sourceRootCID string) (*ForkDatabase
 
 	return &result, nil
 }
+
+// --- DeleteDatabase ---
+type DeleteDatabaseArgs struct {
+	DbName string `json:"db_name"`
+}
+
+type DeleteDatabaseResult struct {
+	Result string `json:"result"`
+}
+
+func (c *RpcClient) DeleteDatabase(dbName string) (*DeleteDatabaseResult, error) {
+	args := DeleteDatabaseArgs{
+		DbName: dbName,
+	}
+	request := JSONRPCRequest{
+		Method: "wwfs.DeleteDatabase",
+		Params: [1]any{args},
+		ID:     1,
+	}
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(c.endpoint, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to RPC server: %w. Is the server running?", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResponse JSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResponse); err != nil {
+		return nil, err
+	}
+
+	if rpcResponse.Error != nil {
+		return nil, fmt.Errorf("RPC error: %v", rpcResponse.Error)
+	}
+
+	var result DeleteDatabaseResult
+	if err := json.Unmarshal(rpcResponse.Result, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}

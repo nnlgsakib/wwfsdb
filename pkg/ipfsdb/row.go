@@ -2,17 +2,16 @@ package ipfsdb
 
 import (
 	"fmt"
-	"strconv"
 
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // Insert adds a new row to a table
-func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
+func Insert(ipfsAPI, dbName, tableName string, insert *sqlparser.Insert) error {
 	sh := shell.NewShell(ipfsAPI)
 
 	db, err := LoadDatabase(sh, dbName)
@@ -20,7 +19,7 @@ func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 		return err
 	}
 
-	newDb, err := InsertDB(sh, db, tableName, values)
+	newDb, err := InsertDB(sh, db, tableName, insert)
 	if err != nil {
 		return err
 	}
@@ -35,34 +34,8 @@ func Insert(ipfsAPI, dbName, tableName string, values []ast.Expression) error {
 	return nil
 }
 
-func evaluateInsertExpression(expr ast.Expression) (interface{}, error) {
-	switch e := expr.(type) {
-	case *ast.Literal:
-		return e.Value, nil
-	case *ast.NumberLiteral:
-		return e.Value, nil
-	case *ast.BooleanLiteral:
-		return e.Value, nil
-	case *ast.PrefixExpression:
-		right, err := evaluateInsertExpression(e.Right)
-		if err != nil {
-			return nil, err
-		}
-
-		if e.Operator == "-" {
-			if v, ok := right.(float64); ok {
-				return -v, nil
-			}
-			return nil, fmt.Errorf("unary minus operator can only be applied to numbers, got %T", right)
-		}
-		return nil, fmt.Errorf("unsupported prefix operator in INSERT: %s", e.Operator)
-	default:
-		return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
-	}
-}
-
 // InsertDB adds a new row to an in-memory database object using paged storage.
-func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.Expression) (*pb.Database, error) {
+func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlparser.Insert) (*pb.Database, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
 	tableCID, ok := newDb.Tables[tableName]
@@ -80,35 +53,26 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.E
 		return nil, err
 	}
 
-	if len(values) != len(schema.Columns) {
+	values := insert.Rows.(sqlparser.Values)
+	if len(values) != 1 {
+		return nil, fmt.Errorf("multi-row inserts not yet supported")
+	}
+	rowTuple := values[0]
+
+	if len(rowTuple) != len(schema.Columns) {
 		return nil, fmt.Errorf("incorrect number of values for insert statement")
 	}
 
 	// Create the new row object
 	row := &pb.Row{Values: make(map[string]*anypb.Any)}
 	for i, col := range schema.Columns {
-		expr := values[i]
-		rawValue, err := evaluateInsertExpression(expr)
-		if err != nil {
-			return nil, err
+		expr := rowTuple[i]
+		lit, ok := expr.(*sqlparser.SQLVal)
+		if !ok {
+			return nil, fmt.Errorf("unsupported expression type in INSERT VALUES: %T", expr)
 		}
-		var valueStr string
-		switch v := rawValue.(type) {
-		case float64:
-			// Check if it's a whole number
-			if v == float64(int64(v)) {
-				// It's an integer, format without decimal places
-				valueStr = fmt.Sprintf("%.0f", v)
-			} else {
-				// It's a real float, use default formatting
-				valueStr = fmt.Sprintf("%v", v)
-			}
-		case int64:
-			valueStr = fmt.Sprintf("%d", v)
-		default:
-			valueStr = fmt.Sprintf("%v", rawValue)
-		}
-		val, err := ValidateAndCastValue(valueStr, col.Type)
+
+		val, err := ValidateAndCastValue(string(lit.Val), col.Type)
 		if err != nil {
 			return nil, fmt.Errorf("validation error for column '%s': %w", col.Name, err)
 		}
@@ -165,7 +129,7 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, values []ast.E
 }
 
 // Update modifies rows in a table
-func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expression, where ast.Expression) (int, error) {
+func Update(ipfsAPI, dbName, tableName string, update *sqlparser.Update) (int, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	db, err := LoadDatabase(sh, dbName)
@@ -173,7 +137,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 		return 0, err
 	}
 
-	newDb, updatedCount, err := UpdateDB(sh, db, tableName, setColumn, setValue, where)
+	newDb, updatedCount, err := UpdateDB(sh, db, tableName, update)
 	if err != nil {
 		return 0, err
 	}
@@ -193,7 +157,7 @@ func Update(ipfsAPI, dbName, tableName, setColumn string, setValue ast.Expressio
 }
 
 // UpdateDB modifies rows in an in-memory database object using paged storage.
-func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, setValue ast.Expression, where ast.Expression) (*pb.Database, int, error) {
+func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlparser.Update) (*pb.Database, int, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
 	tableCID, ok := newDb.Tables[tableName]
@@ -212,6 +176,13 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 	}
 	schemas := map[string]*pb.Schema{tableName: schema}
 
+	// TODO: Handle multiple SET clauses
+	if len(update.Exprs) != 1 {
+		return nil, 0, fmt.Errorf("multiple SET clauses not yet supported")
+	}
+	setColumn := update.Exprs[0].Name.Name.String()
+	setValue := update.Exprs[0].Expr
+
 	var columnType string
 	columnExists := false
 	for _, col := range schema.Columns {
@@ -225,17 +196,11 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 		return nil, 0, fmt.Errorf("column '%s' not found in table '%s'", setColumn, tableName)
 	}
 
-	var valueStr string
-	switch v := setValue.(type) {
-	case *ast.Literal:
-		valueStr = v.Value
-	case *ast.NumberLiteral:
-		valueStr = strconv.FormatFloat(v.Value, 'f', -1, 64)
-	case *ast.BooleanLiteral:
-		valueStr = strconv.FormatBool(v.Value)
-	default:
+	lit, ok := setValue.(*sqlparser.SQLVal)
+	if !ok {
 		return nil, 0, fmt.Errorf("unsupported expression type in SET clause: %T", setValue)
 	}
+	valueStr := string(lit.Val)
 
 	castedValue, err := ValidateAndCastValue(valueStr, columnType)
 	if err != nil {
@@ -251,7 +216,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, where, schemas)
+			include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -300,7 +265,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName, setColumn string, set
 }
 
 // Delete removes rows from a table
-func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) (int, error) {
+func Delete(ipfsAPI, dbName, tableName string, delete *sqlparser.Delete) (int, error) {
 	sh := shell.NewShell(ipfsAPI)
 
 	db, err := LoadDatabase(sh, dbName)
@@ -308,7 +273,7 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) (int, error
 		return 0, err
 	}
 
-	newDb, deletedCount, err := DeleteDB(sh, db, tableName, where)
+	newDb, deletedCount, err := DeleteDB(sh, db, tableName, delete)
 	if err != nil {
 		return 0, err
 	}
@@ -328,7 +293,7 @@ func Delete(ipfsAPI, dbName, tableName string, where ast.Expression) (int, error
 }
 
 // DeleteDB removes rows from an in-memory database object using paged storage.
-func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, where ast.Expression) (*pb.Database, int, error) {
+func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlparser.Delete) (*pb.Database, int, error) {
 	newDb := proto.Clone(db).(*pb.Database)
 
 	tableCID, ok := newDb.Tables[tableName]
@@ -358,7 +323,7 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, where ast.Expr
 		var newRows []*pb.Row
 		pageModified := false
 		for _, row := range page.Rows {
-			include, err := evaluateExpression(CombinedRow{tableName: row}, where, schemas)
+			include, err := evaluateExpression(CombinedRow{tableName: row}, delete.Where.Expr, schemas)
 			if err != nil {
 				return nil, 0, err
 			}

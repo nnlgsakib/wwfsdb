@@ -14,7 +14,7 @@ import (
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 )
 
 // --- Job Queue / Dispatcher ---
@@ -126,7 +126,7 @@ func (d *Dispatcher) RollbackTransaction(sessionID string) error {
 	return nil
 }
 
-func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt ast.Statement, query, signature string) (string, error) {
+func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt sqlparser.Statement, query, signature string) (string, error) {
 	d.mu.Lock()
 	txn, ok := d.transactions[sessionID]
 	if !ok {

@@ -8,8 +8,7 @@ import (
 	"strings"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
-	ssql "github.com/nnlgsakib/wwfsdb/pkg/ssql"
-	"github.com/nnlgsakib/wwfsdb/pkg/ssql/ast"
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,13 +27,13 @@ It resolves the database's permanent Program ID (IPNS Name) to get the latest st
 		fmt.Printf("Querying database '%s' with: \"%s\"\n", dbName, queryString)
 
 		// --- 1. Parse the query string to get table name and columns --- 
-		stmt, err := ssql.Parse(queryString)
+		stmt, err := sqlparser.Parse(queryString)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			return
 		}
 
-		_, ok := stmt.(*ast.SelectStmt)
+		_, ok := stmt.(*sqlparser.Select)
 		if !ok {
 			fmt.Fprintln(os.Stderr, "Error: invalid SELECT statement")
 			return
