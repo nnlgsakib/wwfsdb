@@ -43,13 +43,23 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // Create user
-    const insertQuery = `
-      INSERT INTO users (user_id, username, password_hash, email, full_name, phone_number, address, created_at, updated_at) 
-      VALUES ('${newUser.user_id}', '${newUser.username}', '${newUser.password_hash}', '${newUser.email}', '${newUser.full_name}', '${newUser.phone_number}', '${newUser.address}', '${newUser.created_at}', '${newUser.updated_at}');
-    `;
-
-    await executeWriteQuery(insertQuery);
+    // Begin transaction using multiple queries in sequence
+    const initialAccountId = uuidv4();
+    const initialAccountNumber = Math.floor(Math.random() * 9000000000) + 1000000000; // 10-digit random account number
+    const currency = "USD"; // Default currency
+    
+    // Create user and account queries in sequence to maintain consistency
+    const queries = [
+      `INSERT INTO users (user_id, username, password_hash, email, full_name, phone_number, address, created_at, updated_at) 
+        VALUES ('${newUser.user_id}', '${newUser.username}', '${newUser.password_hash}', '${newUser.email}', '${newUser.full_name}', '${newUser.phone_number}', '${newUser.address}', '${newUser.created_at}', '${newUser.updated_at}');`,
+      `INSERT INTO accounts (account_id, user_id, account_number, account_type, balance, currency, status, created_at) 
+        VALUES ('${initialAccountId}', '${newUser.user_id}', '${initialAccountNumber}', 'Checking', 0.00, '${currency}', 'Active', '${newUser.created_at}');`
+    ];
+    
+    // Execute queries in sequence within the same session
+    for (const query of queries) {
+      await executeWriteQuery(query);
+    }
     
     // Don't return password hash to client
     const userForToken = { ...newUser };

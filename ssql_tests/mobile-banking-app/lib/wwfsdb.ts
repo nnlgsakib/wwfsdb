@@ -2,8 +2,8 @@
 import axios from "axios";
 
 const RPC_SERVER_URL = "http://localhost:8080/rpc";
-const DB_NAME = "mbs_prod";
-const PRIVATE_KEY = "a20be6eeca6fb5f86c6a5616c28fa45da4b53a2ae616f8adff58de1fc4510d2e"; 
+const DB_NAME = "mbs1";
+const PRIVATE_KEY = "812300dd3dbe95b946901cd3d5941ada3a4b4f3c7b69d728446626573bbfee99"; 
 
 interface RpcResponse {
     result?: {

@@ -47,7 +47,7 @@ export default function AccountsPage() {
     )
   }
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0)
+  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance || 0), 0)
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">

@@ -68,20 +68,33 @@ export async function POST(request: NextRequest) {
     const transaction_id = uuidv4();
     const created_at = new Date().toISOString();
 
-    // IMPORTANT: The following queries will be executed as a transaction.
-    // This depends on the wwfsdb server handling them atomically.
-    // For this to work, you MUST provide the correct private key in /lib/wwfsdb.ts
-    const transferQueries = [
-        `BEGIN;`,
-        `UPDATE accounts SET balance = balance - ${transferAmount} WHERE account_id = '${from_account_id}';`,
-        `UPDATE accounts SET balance = balance + ${transferAmount} WHERE account_id = '${to_account_id}';`,
-        `INSERT INTO transactions (transaction_id, from_account_id, to_account_id, amount, currency, transaction_type, description, status, created_at) VALUES ('${transaction_id}', '${from_account_id}', '${to_account_id}', ${transferAmount}, 'USD', 'Transfer', '${description || "Money Transfer"}', 'Completed', '${created_at}');`,
-        `COMMIT;`
-    ].join('\n');
-    
-    // Note: The current implementation of the rpc client sends the whole block as one "query".
-    // The server-side dispatcher will handle the BEGIN/COMMIT statements.
-    await executeWriteQuery(transferQueries);
+    // Execute queries individually instead of as a transaction block
+    // This is less atomic but more compatible with WWFSDB
+    try {
+      // 1. Deduct from sender's account
+      const deductQuery = `UPDATE accounts SET balance = balance - ${transferAmount} WHERE account_id = '${from_account_id}';`;
+      await executeWriteQuery(deductQuery);
+      
+      // 2. Add to receiver's account
+      const addQuery = `UPDATE accounts SET balance = balance + ${transferAmount} WHERE account_id = '${to_account_id}';`;
+      await executeWriteQuery(addQuery);
+      
+      // 3. Insert transaction record
+      const insertQuery = `INSERT INTO transactions (transaction_id, from_account_id, to_account_id, amount, currency, transaction_type, description, status, created_at) VALUES ('${transaction_id}', '${from_account_id}', '${to_account_id}', ${transferAmount}, 'USD', 'Transfer', '${description || "Money Transfer"}', 'Completed', '${created_at}');`;
+      await executeWriteQuery(insertQuery);
+    } catch (queryError) {
+      console.error("[TRANSFER_QUERIES_ERROR]", queryError);
+      // Try to rollback by reversing the operations
+      try {
+        // Reverse the deduction
+        await executeWriteQuery(`UPDATE accounts SET balance = balance + ${transferAmount} WHERE account_id = '${from_account_id}';`);
+        // Reverse the addition
+        await executeWriteQuery(`UPDATE accounts SET balance = balance - ${transferAmount} WHERE account_id = '${to_account_id}';`);
+      } catch (rollbackError) {
+        console.error("[TRANSFER_ROLLBACK_ERROR]", rollbackError);
+      }
+      throw queryError;
+    }
 
     const transaction = {
         transaction_id,
@@ -102,12 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    // If something fails, we should ideally send a ROLLBACK query.
-    // However, the simple dispatcher might not support this gracefully without session management.
-    // For now, we log the error.
     console.error("[TRANSFER_POST_ERROR]", error);
-    // It would be good practice to try and rollback
-    await executeWriteQuery('ROLLBACK;');
     return NextResponse.json(
       { success: false, message: "Server error during transfer" },
       { status: 500 }

@@ -1,0 +1,120 @@
+# WWSQL/WFSDB Upgrade Plan: Path to a Fully Functional SQL Database
+
+This document outlines the necessary upgrades to evolve WFSDB into a powerful, general-purpose database system comparable to traditional SQL databases. The focus is on adding complex SQL features, improving performance, and ensuring data integrity.
+
+## 1. Query Engine & Advanced SELECT Capabilities
+
+The current query engine supports basic SELECTs, simple JOINs, and a few aggregate functions. This is the most critical area for improvement to enable complex application development.
+
+- [ ] **Subqueries:** Implement support for subqueries in various clauses.
+  - [ ] In `WHERE` clauses (e.g., `WHERE column IN (SELECT ...)`).
+  - [ ] In `FROM` clauses (Derived Tables, e.g., `FROM (SELECT ...) AS derived_table`).
+  - [ ] In `SELECT` clauses (Scalar Subqueries, e.g., `SELECT column, (SELECT name FROM ... WHERE ...) AS name`).
+  - *Files to modify: `pkg/ipfsdb/query.go`*
+
+- [ ] **Common Table Expressions (CTEs):** Add support for the `WITH` clause for recursive and non-recursive queries to improve readability and structure of complex queries.
+  - *Files to modify: `pkg/ipfsdb/query.go`, `vitess-sqlparser/` usage.*
+
+- [ ] **Advanced JOIN Types:** The current implementation performs a cross-product and then filters (an `INNER JOIN`). Full join support is essential.
+  - [ ] `LEFT OUTER JOIN`
+  - [ ] `RIGHT OUTER JOIN`
+  - [ ] `FULL OUTER JOIN`
+  - [ ] `NATURAL JOIN`
+  - *Files to modify: `pkg/ipfsdb/query.go` (specifically `executeJoin` and `executeFromClause`)*
+
+- [ ] **Advanced Filtering and Expressions:**
+  - [ ] `HAVING` clause to filter results after aggregation (`GROUP BY`).
+  - [ ] `BETWEEN` operator.
+  - [ ] `LIKE` and `ILIKE` operators for pattern matching.
+  - [ ] `IS NULL` and `IS NOT NULL` checks.
+  - [ ] `CASE` statements for conditional logic within queries.
+  - *Files to modify: `pkg/ipfsdb/query.go` (specifically `evaluateExpression`)*
+
+- [ ] **Set Operations:**
+  - [ ] `UNION`
+  - [ ] `UNION ALL`
+  - [ ] `INTERSECT`
+  - [ ] `EXCEPT`
+  - *Files to modify: `pkg/ipfsdb/query.go`*
+
+- [ ] **Window Functions:** Implement `OVER()` clause for functions like `ROW_NUMBER()`, `RANK()`, `LEAD()`, `LAG()`, and aggregate functions as window functions. This is a major feature for analytics.
+  - *Files to modify: `pkg/ipfsdb/query.go`*
+
+- [ ] **Expanded Function Library:**
+  - [ ] **String Functions:** `LOWER()`, `UPPER()`, `SUBSTRING()`, `TRIM()`, `LENGTH()`, `CONCAT()`.
+  - [ ] **Date/Time Functions:** `NOW()`, `DATE_PART()`, `EXTRACT()`, date arithmetic.
+  - [ ] **JSON Functions:** `JSON_EXTRACT_PATH_TEXT()`, etc. (Requires JSON data type).
+  - [ ] **Type Casting:** `CAST(expression AS new_type)`.
+  - *Files to modify: `pkg/ipfsdb/query.go` (specifically `evaluateExpressionValue`)*
+
+## 2. DDL, Data Integrity, and Schema Management
+
+The system needs robust data integrity features beyond the current `NOT NULL` and `UNIQUE` constraints.
+
+- [ ] **Full `ALTER TABLE` Support:** The current implementation is a placeholder.
+  - [ ] `ADD/DROP/RENAME COLUMN`.
+  - [ ] `ALTER COLUMN TYPE`.
+  - [ ] `ADD/DROP CONSTRAINT`.
+  - *Files to modify: `pkg/ipfsdb/table.go` (specifically `AlterTableDB`)*
+
+- [ ] **Advanced Constraints:**
+  - [ ] `PRIMARY KEY` constraint (can be a combination of `NOT NULL` and `UNIQUE`).
+  - [ ] `FOREIGN KEY` constraints for referential integrity. This is critical for relational data.
+  - [ ] `CHECK` constraints to validate data based on a boolean expression.
+  - *Files to modify: `pkg/ipfsdb/table.go`, `pkg/ipfsdb/row.go`*
+
+- [ ] **Views:**
+  - [ ] `CREATE VIEW` and `DROP VIEW` to store complex queries as virtual tables.
+  - *Files to modify: `pkg/ipfsdb/database.go`, `pkg/ipfsdb/query.go`*
+
+- [ ] **Sequences / Auto-incrementing IDs:**
+  - [ ] Implement `SERIAL` or `AUTO_INCREMENT` functionality for primary keys.
+  - *Files to modify: `pkg/ipfsdb/row.go`, `pkg/ipfsdb/table.go`*
+
+## 3. Performance and Indexing
+
+The current indexing is basic. A real-world database needs a more sophisticated approach.
+
+- [ ] **Query Optimizer:**
+  - [ ] Implement a basic cost-based query optimizer that can choose between different join strategies (e.g., Nested Loop vs. Hash Join) and decide when to use an index.
+  - *Files to modify: This would likely require a new package, e.g., `pkg/optimizer/` and changes in `pkg/ipfsdb/query.go`.*
+
+- [ ] **Advanced Indexing:**
+  - [ ] **Composite Indexes:** Allow creating indexes on multiple columns.
+  - [ ] **Full `CREATE INDEX` support:** The current implementation is a `TODO`.
+  - [ ] **Index Types:** Consider different index types for different data, such as Hash Indexes for equality checks.
+  - *Files to modify: `pkg/ipfsdb/index.go`, `pkg/ipfsdb/prolly_trees.go`*
+
+## 4. Data Types
+
+- [ ] **Add More Core Data Types:**
+  - [ ] `JSON` or `JSONB` for storing unstructured data.
+  - [ ] `UUID` for unique identifiers.
+  - [ ] `ENUM` for columns with a fixed set of possible values.
+  - [ ] `ARRAY` type to store lists of values.
+  - *Files to modify: `pkg/ipfsdb/validation.go`, `pkg/ipfsdb/proto_helpers.go`, `pkg/ipfsdb/proto/wwfsdb.proto`*
+
+## 5. Transaction and Concurrency Control
+
+The current transaction model is a good start but lacks true isolation.
+
+- [ ] **Implement ACID Isolation Levels:**
+  - [ ] `READ COMMITTED` (default).
+  - [ ] `REPEATABLE READ`.
+  - [ ] `SERIALIZABLE`.
+  - *Files to modify: `pkg/rpc/server.go` (Dispatcher and Transaction logic)*
+
+## 6. DML Enhancements
+
+- [ ] **RETURNING Clause:**
+  - [ ] Add support for `INSERT ... RETURNING id` or `UPDATE ... RETURNING *` to get back data from modified rows.
+  - *Files to modify: `pkg/ipfsdb/row.go`*
+
+## 7. Security & Access Control
+
+The current model is a single owner for the entire database.
+
+- [ ] **Users, Roles, and Permissions:**
+  - [ ] `CREATE/ALTER/DROP USER/ROLE`.
+  - [ ] `GRANT` and `REVOKE` commands to control table and column-level access.
+  - *Files to modify: This is a major feature and would require significant changes, likely starting in `pkg/auth/` and `pkg/ipfsdb/database.go`.*

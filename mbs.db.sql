@@ -126,8 +126,8 @@ CREATE TABLE security_logs (
 
 -- Users
 INSERT INTO users (user_id, username, password_hash, email, full_name, phone_number, address, created_at) VALUES
-('1', 'johndoe', 'hashed_password_1', 'johndoe@example.com', 'John Doe', '123-456-7890', '123 Main St, Anytown, USA', '2023-01-15T10:00:00Z'),
-('2', 'janesmith', 'hashed_password_2', 'janesmith@example.com', 'Jane Smith', '098-765-4321', '456 Oak Ave, Otherville, USA', '2023-02-20T11:30:00Z');
+('1', 'nlg', 'hashed_password_1', 'johndoe@example.com', 'nlg 1', '123-456-7890', '123 Main St, Anytown, USA', '2023-01-15T10:00:00Z'),
+('2', 'nlg2', 'hashed_password_2', 'janesmith@example.com', 'Jane Smith', '098-765-4321', '456 Oak Ave, Otherville, USA', '2023-02-20T11:30:00Z');
 
 -- Accounts
 INSERT INTO accounts (account_id, user_id, account_number, account_type, balance, currency, status, created_at) VALUES

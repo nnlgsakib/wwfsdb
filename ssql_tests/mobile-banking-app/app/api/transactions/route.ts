@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Simple query to get user's accounts
     const accountsQuery = `SELECT account_id FROM accounts WHERE user_id = '${userId}'`;
     const userAccounts = await executeQuery<any[]>(accountsQuery);
 
@@ -19,18 +20,29 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: true, transactions: [] });
     }
 
-    const accountIds = userAccounts.map(acc => `'${acc.account_id}'`).join(', ');
-    const userAccountIdsQuery = `(${accountIds})`;
+    // Simple approach: Get all transactions and filter in memory
+    const query = `SELECT * FROM transactions ORDER BY created_at DESC`;
+    const allTransactions = await executeQuery<any[]>(query);
+    
+    // Get user account IDs for filtering
+    const userAccountIds = userAccounts.map(acc => acc.account_id);
+    
+    // Simple filtering - just check if transaction involves user's accounts
+    const transactions = (allTransactions || []).filter(transaction => {
+      const fromAccountId = transaction.from_account_id;
+      const toAccountId = transaction.to_account_id;
+      return userAccountIds.includes(fromAccountId) || userAccountIds.includes(toAccountId);
+    });
 
-    const query = `
-      SELECT * FROM transactions 
-      WHERE from_account_id IN ${userAccountIdsQuery} 
-         OR to_account_id IN ${userAccountIdsQuery}
-      ORDER BY created_at DESC`;
-      
-    const transactions = await executeQuery<any[]>(query);
+    // Simple processing - convert amounts to numbers
+    const processedTransactions = transactions.map(transaction => ({
+      ...transaction,
+      amount: typeof transaction.amount === 'string' 
+        ? parseFloat(transaction.amount) 
+        : Number(transaction.amount),
+    }));
 
-    return NextResponse.json({ success: true, transactions: transactions || [] });
+    return NextResponse.json({ success: true, transactions: processedTransactions });
 
   } catch (error) {
     console.error("[TRANSACTIONS_GET_ERROR]", error);

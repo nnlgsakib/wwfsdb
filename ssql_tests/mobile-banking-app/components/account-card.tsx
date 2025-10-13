@@ -46,7 +46,7 @@ export function AccountCard({ account }: AccountCardProps) {
         <div>
           <p className="text-sm opacity-90 mb-1">Available Balance</p>
           <p className="text-3xl font-bold">
-            {account.currency} {account.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            {account.currency} {(account.balance || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </p>
         </div>
       </CardContent>

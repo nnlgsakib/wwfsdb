@@ -98,19 +98,19 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Balance"
-          value={`$${data.stats.total_balance.toLocaleString()}`}
+          value={`${(data.stats.total_balance || 0).toLocaleString()}`}
           icon={DollarSign}
           trend={{ value: "12.5%", positive: true }}
         />
         <StatCard
           title="Monthly Income"
-          value={`$${data.stats.monthly_income.toLocaleString()}`}
+          value={`${(data.stats.monthly_income || 0).toLocaleString()}`}
           icon={TrendingUp}
           trend={{ value: "8.2%", positive: true }}
         />
         <StatCard
           title="Monthly Expenses"
-          value={`$${data.stats.monthly_expenses.toLocaleString()}`}
+          value={`${(data.stats.monthly_expenses || 0).toLocaleString()}`}
           icon={ArrowDownRight}
           trend={{ value: "3.1%", positive: false }}
         />
@@ -177,7 +177,7 @@ export default function DashboardPage() {
                 <p className={`font-semibold ${transaction.amount > 0 ? "text-success" : "text-foreground"}`}>
                   {transaction.amount > 0 ? "+" : ""}
                   {transaction.currency}{" "}
-                  {Math.abs(transaction.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  {Math.abs(transaction.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </p>
               </div>
             ))}

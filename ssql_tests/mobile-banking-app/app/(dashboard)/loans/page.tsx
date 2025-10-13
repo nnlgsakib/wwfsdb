@@ -53,8 +53,8 @@ export default function LoansPage() {
   }
 
   const activeLoans = loans.filter((loan) => loan.status === "Active")
-  const totalBorrowed = activeLoans.reduce((sum, loan) => sum + loan.amount, 0)
-  const totalRemaining = activeLoans.reduce((sum, loan) => sum + loan.remaining_balance, 0)
+  const totalBorrowed = activeLoans.reduce((sum, loan) => sum + (loan.amount || 0), 0)
+  const totalRemaining = activeLoans.reduce((sum, loan) => sum + (loan.remaining_balance || 0), 0)
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
@@ -77,7 +77,7 @@ export default function LoansPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Total Borrowed</p>
-                <p className="text-2xl font-bold">${totalBorrowed.toLocaleString()}</p>
+                <p className="text-2xl font-bold">${(totalBorrowed || 0).toLocaleString()}</p>
               </div>
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                 <DollarSign className="w-6 h-6 text-primary" />
@@ -90,7 +90,7 @@ export default function LoansPage() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Remaining Balance</p>
-                <p className="text-2xl font-bold">${totalRemaining.toLocaleString()}</p>
+                <p className="text-2xl font-bold">${(totalRemaining || 0).toLocaleString()}</p>
               </div>
               <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center">
                 <TrendingDown className="w-6 h-6 text-secondary" />
@@ -157,11 +157,11 @@ export default function LoansPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Loan Amount</p>
-                    <p className="font-semibold">${loan.amount.toLocaleString()}</p>
+                    <p className="font-semibold">${(loan.amount || 0).toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Remaining</p>
-                    <p className="font-semibold">${loan.remaining_balance.toLocaleString()}</p>
+                    <p className="font-semibold">${(loan.remaining_balance || 0).toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Interest Rate</p>
@@ -170,7 +170,7 @@ export default function LoansPage() {
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Monthly Payment</p>
                     <p className="font-semibold">
-                      {loan.monthly_payment > 0 ? `$${loan.monthly_payment.toLocaleString()}` : "N/A"}
+                      {loan.monthly_payment > 0 ? `${(loan.monthly_payment || 0).toLocaleString()}` : "N/A"}
                     </p>
                   </div>
                 </div>

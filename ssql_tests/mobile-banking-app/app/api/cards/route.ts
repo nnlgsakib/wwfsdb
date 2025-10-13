@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Simple query to get user's accounts
     const accountsQuery = `SELECT account_id FROM accounts WHERE user_id = '${userId}'`;
     const userAccounts = await executeQuery<any[]>(accountsQuery);
 
@@ -19,13 +20,16 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: true, cards: [] });
     }
 
+    // Get account IDs
     const accountIds = userAccounts.map(acc => `'${acc.account_id}'`).join(', ');
+    
+    // Simple check for valid account IDs
+    if (!accountIds || accountIds.trim() === '') {
+        return NextResponse.json({ success: true, cards: [] });
+    }
 
-    const query = `
-      SELECT * FROM cards 
-      WHERE account_id IN (${accountIds}) 
-      ORDER BY created_at DESC`;
-      
+    // Simple query to get cards for user's accounts
+    const query = `SELECT * FROM cards WHERE account_id IN (${accountIds}) ORDER BY created_at DESC`;
     const cards = await executeQuery<any[]>(query);
 
     return NextResponse.json({ success: true, cards: cards || [] });

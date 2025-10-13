@@ -154,7 +154,7 @@ export default function TransactionsPage() {
                     <p className={`font-bold text-lg ${transaction.amount > 0 ? "text-success" : "text-foreground"}`}>
                       {transaction.amount > 0 ? "+" : ""}
                       {transaction.currency}{" "}
-                      {Math.abs(transaction.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      {Math.abs(transaction.amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                     </p>
                     <span
                       className={`text-xs px-2 py-1 rounded-full ${
