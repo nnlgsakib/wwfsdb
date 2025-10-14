@@ -2,18 +2,17 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v6.32.0
-// source: pkg/ipfsdb/proto/wwfsdb.proto
+// source: pkg/core/proto/wwfsdb.proto
 
 package proto
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	anypb "google.golang.org/protobuf/types/known/anypb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -36,7 +35,7 @@ type Column struct {
 
 func (x *Column) Reset() {
 	*x = Column{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[0]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +47,7 @@ func (x *Column) String() string {
 func (*Column) ProtoMessage() {}
 
 func (x *Column) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[0]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +60,7 @@ func (x *Column) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Column.ProtoReflect.Descriptor instead.
 func (*Column) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{0}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Column) GetName() string {
@@ -102,7 +101,7 @@ type Schema struct {
 
 func (x *Schema) Reset() {
 	*x = Schema{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[1]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -114,7 +113,7 @@ func (x *Schema) String() string {
 func (*Schema) ProtoMessage() {}
 
 func (x *Schema) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[1]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -127,7 +126,7 @@ func (x *Schema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Schema.ProtoReflect.Descriptor instead.
 func (*Schema) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{1}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Schema) GetColumns() []*Column {
@@ -148,7 +147,7 @@ type Row struct {
 
 func (x *Row) Reset() {
 	*x = Row{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[2]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -160,7 +159,7 @@ func (x *Row) String() string {
 func (*Row) ProtoMessage() {}
 
 func (x *Row) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[2]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -173,7 +172,7 @@ func (x *Row) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Row.ProtoReflect.Descriptor instead.
 func (*Row) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{2}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Row) GetValues() map[string]*anypb.Any {
@@ -193,7 +192,7 @@ type Page struct {
 
 func (x *Page) Reset() {
 	*x = Page{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -205,7 +204,7 @@ func (x *Page) String() string {
 func (*Page) ProtoMessage() {}
 
 func (x *Page) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[3]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -218,7 +217,7 @@ func (x *Page) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Page.ProtoReflect.Descriptor instead.
 func (*Page) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{3}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Page) GetRows() []*Row {
@@ -240,7 +239,7 @@ type Table struct {
 
 func (x *Table) Reset() {
 	*x = Table{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -252,7 +251,7 @@ func (x *Table) String() string {
 func (*Table) ProtoMessage() {}
 
 func (x *Table) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[4]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -265,7 +264,7 @@ func (x *Table) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Table.ProtoReflect.Descriptor instead.
 func (*Table) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{4}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Table) GetSchemaCid() string {
@@ -300,7 +299,7 @@ type Database struct {
 
 func (x *Database) Reset() {
 	*x = Database{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -312,7 +311,7 @@ func (x *Database) String() string {
 func (*Database) ProtoMessage() {}
 
 func (x *Database) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[5]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -325,7 +324,7 @@ func (x *Database) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Database.ProtoReflect.Descriptor instead.
 func (*Database) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{5}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Database) GetTables() map[string]string {
@@ -352,7 +351,7 @@ type IndexNode struct {
 
 func (x *IndexNode) Reset() {
 	*x = IndexNode{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -364,7 +363,7 @@ func (x *IndexNode) String() string {
 func (*IndexNode) ProtoMessage() {}
 
 func (x *IndexNode) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[6]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -377,7 +376,7 @@ func (x *IndexNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IndexNode.ProtoReflect.Descriptor instead.
 func (*IndexNode) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{6}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *IndexNode) GetCids() []string {
@@ -398,7 +397,7 @@ type Index struct {
 
 func (x *Index) Reset() {
 	*x = Index{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -410,7 +409,7 @@ func (x *Index) String() string {
 func (*Index) ProtoMessage() {}
 
 func (x *Index) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[7]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -423,7 +422,7 @@ func (x *Index) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Index.ProtoReflect.Descriptor instead.
 func (*Index) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{7}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Index) GetNodes() map[string]*IndexNode {
@@ -445,7 +444,7 @@ type RegistryEntry struct {
 
 func (x *RegistryEntry) Reset() {
 	*x = RegistryEntry{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[8]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -457,7 +456,7 @@ func (x *RegistryEntry) String() string {
 func (*RegistryEntry) ProtoMessage() {}
 
 func (x *RegistryEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[8]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -470,7 +469,7 @@ func (x *RegistryEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistryEntry.ProtoReflect.Descriptor instead.
 func (*RegistryEntry) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{8}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RegistryEntry) GetDbName() string {
@@ -504,7 +503,7 @@ type ProllyNodeValues struct {
 
 func (x *ProllyNodeValues) Reset() {
 	*x = ProllyNodeValues{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[9]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -516,7 +515,7 @@ func (x *ProllyNodeValues) String() string {
 func (*ProllyNodeValues) ProtoMessage() {}
 
 func (x *ProllyNodeValues) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[9]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -529,7 +528,7 @@ func (x *ProllyNodeValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProllyNodeValues.ProtoReflect.Descriptor instead.
 func (*ProllyNodeValues) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{9}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ProllyNodeValues) GetValues() []string {
@@ -552,7 +551,7 @@ type ProllyNode struct {
 
 func (x *ProllyNode) Reset() {
 	*x = ProllyNode{}
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[10]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -564,7 +563,7 @@ func (x *ProllyNode) String() string {
 func (*ProllyNode) ProtoMessage() {}
 
 func (x *ProllyNode) ProtoReflect() protoreflect.Message {
-	mi := &file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes[10]
+	mi := &file_pkg_core_proto_wwfsdb_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -577,7 +576,7 @@ func (x *ProllyNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProllyNode.ProtoReflect.Descriptor instead.
 func (*ProllyNode) Descriptor() ([]byte, []int) {
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP(), []int{10}
+	return file_pkg_core_proto_wwfsdb_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ProllyNode) GetKeys() []string {
@@ -608,11 +607,11 @@ func (x *ProllyNode) GetIsLeaf() bool {
 	return false
 }
 
-var File_pkg_ipfsdb_proto_wwfsdb_proto protoreflect.FileDescriptor
+var File_pkg_core_proto_wwfsdb_proto protoreflect.FileDescriptor
 
-const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
+const file_pkg_core_proto_wwfsdb_proto_rawDesc = "" +
 	"\n" +
-	"\x1dpkg/ipfsdb/proto/wwfsdb.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"m\n" +
+	"\x1bpkg/core/proto/wwfsdb.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"m\n" +
 	"\x06Column\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x1e\n" +
@@ -662,22 +661,22 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\x04keys\x18\x01 \x03(\tR\x04keys\x12/\n" +
 	"\x06values\x18\x02 \x03(\v2\x17.proto.ProllyNodeValuesR\x06values\x12\x1a\n" +
 	"\bchildren\x18\x03 \x03(\tR\bchildren\x12\x17\n" +
-	"\ais_leaf\x18\x04 \x01(\bR\x06isLeafB.Z,github.com/nnlgsakib/wwfsdb/pkg/core/protob\x06proto3"
+	"\ais_leaf\x18\x04 \x01(\bR\x06isLeafB,Z*github.com/nnlgsakib/wwfsdb/pkg/core/protob\x06proto3"
 
 var (
-	file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescOnce sync.Once
-	file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData []byte
+	file_pkg_core_proto_wwfsdb_proto_rawDescOnce sync.Once
+	file_pkg_core_proto_wwfsdb_proto_rawDescData []byte
 )
 
-func file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescGZIP() []byte {
-	file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescOnce.Do(func() {
-		file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc), len(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc)))
+func file_pkg_core_proto_wwfsdb_proto_rawDescGZIP() []byte {
+	file_pkg_core_proto_wwfsdb_proto_rawDescOnce.Do(func() {
+		file_pkg_core_proto_wwfsdb_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pkg_core_proto_wwfsdb_proto_rawDesc), len(file_pkg_core_proto_wwfsdb_proto_rawDesc)))
 	})
-	return file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescData
+	return file_pkg_core_proto_wwfsdb_proto_rawDescData
 }
 
-var file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
-var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
+var file_pkg_core_proto_wwfsdb_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_pkg_core_proto_wwfsdb_proto_goTypes = []any{
 	(*Column)(nil),           // 0: proto.Column
 	(*Schema)(nil),           // 1: proto.Schema
 	(*Row)(nil),              // 2: proto.Row
@@ -695,7 +694,7 @@ var file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = []any{
 	nil,                      // 14: proto.Index.NodesEntry
 	(*anypb.Any)(nil),        // 15: google.protobuf.Any
 }
-var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
+var file_pkg_core_proto_wwfsdb_proto_depIdxs = []int32{
 	0,  // 0: proto.Schema.columns:type_name -> proto.Column
 	11, // 1: proto.Row.values:type_name -> proto.Row.ValuesEntry
 	2,  // 2: proto.Page.rows:type_name -> proto.Row
@@ -712,26 +711,26 @@ var file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = []int32{
 	0,  // [0:9] is the sub-list for field type_name
 }
 
-func init() { file_pkg_ipfsdb_proto_wwfsdb_proto_init() }
-func file_pkg_ipfsdb_proto_wwfsdb_proto_init() {
-	if File_pkg_ipfsdb_proto_wwfsdb_proto != nil {
+func init() { file_pkg_core_proto_wwfsdb_proto_init() }
+func file_pkg_core_proto_wwfsdb_proto_init() {
+	if File_pkg_core_proto_wwfsdb_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc), len(file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_core_proto_wwfsdb_proto_rawDesc), len(file_pkg_core_proto_wwfsdb_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes,
-		DependencyIndexes: file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs,
-		MessageInfos:      file_pkg_ipfsdb_proto_wwfsdb_proto_msgTypes,
+		GoTypes:           file_pkg_core_proto_wwfsdb_proto_goTypes,
+		DependencyIndexes: file_pkg_core_proto_wwfsdb_proto_depIdxs,
+		MessageInfos:      file_pkg_core_proto_wwfsdb_proto_msgTypes,
 	}.Build()
-	File_pkg_ipfsdb_proto_wwfsdb_proto = out.File
-	file_pkg_ipfsdb_proto_wwfsdb_proto_goTypes = nil
-	file_pkg_ipfsdb_proto_wwfsdb_proto_depIdxs = nil
+	File_pkg_core_proto_wwfsdb_proto = out.File
+	file_pkg_core_proto_wwfsdb_proto_goTypes = nil
+	file_pkg_core_proto_wwfsdb_proto_depIdxs = nil
 }
