@@ -241,7 +241,8 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 			// Check if the row matches the WHERE clause
 			shouldUpdate := update.Where == nil || update.Where.Expr == nil
 			if !shouldUpdate {
-				include, err := evaluateExpression(CombinedRow{tableName: row}, update.Where.Expr, schemas)
+				// Pass tableName as fromTableNames to scope column resolution
+				include, err := evaluateExpression(sh, db, CombinedRow{tableName: row}, update.Where.Expr, schemas, []string{tableName})
 				if err != nil {
 					return nil, 0, err
 				}
@@ -256,7 +257,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 					setColumn := updateExpr.Name.Name.String()
 
 					// Evaluate the expression on the right side of the SET clause
-					newValue, err := evaluateExpressionValue(CombinedRow{tableName: row}, updateExpr.Expr, schemas)
+					newValue, err := evaluateExpressionValue(sh, db, CombinedRow{tableName: row}, updateExpr.Expr, schemas, []string{tableName})
 					if err != nil {
 						return nil, 0, fmt.Errorf("error evaluating SET expression: %w", err)
 					}
@@ -368,7 +369,8 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 		for _, row := range page.Rows {
 			shouldInclude := delete.Where == nil || delete.Where.Expr == nil
 			if !shouldInclude {
-				include, err := evaluateExpression(CombinedRow{tableName: row}, delete.Where.Expr, schemas)
+				// Pass tableName as fromTableNames to scope column resolution
+				include, err := evaluateExpression(sh, db, CombinedRow{tableName: row}, delete.Where.Expr, schemas, []string{tableName})
 				if err != nil {
 					return nil, 0, err
 				}

@@ -6,10 +6,10 @@ This document outlines the necessary upgrades to evolve WFSDB into a powerful, g
 
 The current query engine supports basic SELECTs, simple JOINs, and a few aggregate functions. This is the most critical area for improvement to enable complex application development.
 
-- [ ] **Subqueries:** Implement support for subqueries in various clauses.
-  - [ ] In `WHERE` clauses (e.g., `WHERE column IN (SELECT ...)`).
-  - [ ] In `FROM` clauses (Derived Tables, e.g., `FROM (SELECT ...) AS derived_table`).
-  - [ ] In `SELECT` clauses (Scalar Subqueries, e.g., `SELECT column, (SELECT name FROM ... WHERE ...) AS name`).
+- [x] **Subqueries:** Implement support for subqueries in various clauses.
+  - [x] In `WHERE` clauses (e.g., `WHERE column IN (SELECT ...)`).
+  - [x] In `FROM` clauses (Derived Tables, e.g., `FROM (SELECT ...) AS derived_table`).
+  - [x] In `SELECT` clauses (Scalar Subqueries, e.g., `SELECT column, (SELECT name FROM ... WHERE ...) AS name`).
   - *Files to modify: `pkg/ipfsdb/query.go`*
 
 - [ ] **Common Table Expressions (CTEs):** Add support for the `WITH` clause for recursive and non-recursive queries to improve readability and structure of complex queries.
@@ -20,7 +20,6 @@ The current query engine supports basic SELECTs, simple JOINs, and a few aggrega
   - [ ] `RIGHT OUTER JOIN`
   - [ ] `FULL OUTER JOIN`
   - [ ] `NATURAL JOIN`
-  - *Files to modify: `pkg/ipfsdb/query.go` (specifically `executeJoin` and `executeFromClause`)*
 
 - [ ] **Advanced Filtering and Expressions:**
   - [ ] `HAVING` clause to filter results after aggregation (`GROUP BY`).
