@@ -7,12 +7,13 @@
 package proto
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	anypb "google.golang.org/protobuf/types/known/anypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	anypb "google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
@@ -661,7 +662,7 @@ const file_pkg_ipfsdb_proto_wwfsdb_proto_rawDesc = "" +
 	"\x04keys\x18\x01 \x03(\tR\x04keys\x12/\n" +
 	"\x06values\x18\x02 \x03(\v2\x17.proto.ProllyNodeValuesR\x06values\x12\x1a\n" +
 	"\bchildren\x18\x03 \x03(\tR\bchildren\x12\x17\n" +
-	"\ais_leaf\x18\x04 \x01(\bR\x06isLeafB.Z,github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/protob\x06proto3"
+	"\ais_leaf\x18\x04 \x01(\bR\x06isLeafB.Z,github.com/nnlgsakib/wwfsdb/pkg/core/protob\x06proto3"
 
 var (
 	file_pkg_ipfsdb_proto_wwfsdb_proto_rawDescOnce sync.Once

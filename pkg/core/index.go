@@ -1,11 +1,11 @@
-package ipfsdb
+package core
 
 import (
 	"fmt"
 
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"

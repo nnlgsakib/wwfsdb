@@ -1,11 +1,12 @@
-package ipfsdb
+package core
 
 import (
 	"fmt"
 	"os"
 
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -20,7 +21,7 @@ func PublishAsync(sh *shell.Shell, dbName, cid string) {
 
 // Publish updates the IPNS record for a database
 func Publish(sh *shell.Shell, dbName, cid string) error {
-	entryData, err := GetFromCache([]byte("registry:" + dbName))
+	entryData, err := leveldb.GetFromCache([]byte("registry:" + dbName))
 	if err != nil {
 		return fmt.Errorf("database %s not found in registry", dbName)
 	}
@@ -33,4 +34,3 @@ func Publish(sh *shell.Shell, dbName, cid string) error {
 	_, err = sh.PublishWithDetails(cid, entry.KeyName, 0, 0, false)
 	return err
 }
-

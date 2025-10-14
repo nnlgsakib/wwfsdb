@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 )
 
 func ExtractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {

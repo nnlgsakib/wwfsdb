@@ -15,7 +15,7 @@ import (
 
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/client"
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

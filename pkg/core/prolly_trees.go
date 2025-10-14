@@ -1,4 +1,4 @@
-package ipfsdb
+package core
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 	"google.golang.org/protobuf/proto"
 )
 

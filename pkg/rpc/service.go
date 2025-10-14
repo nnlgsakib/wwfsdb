@@ -11,8 +11,9 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/core"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
 )
@@ -52,7 +53,7 @@ func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *Exec
 		dbName := parts[2]
 
 		// Call the CreateDatabase function directly
-		result, err := ipfsdb.CreateDatabase(h.Dispatcher.ipfsApi, dbName)
+		result, err := core.CreateDatabase(h.Dispatcher.ipfsApi, dbName)
 		if err != nil {
 			return err
 		}
@@ -140,7 +141,7 @@ func (h *WWFS) ExecuteQuery(r *http.Request, args *ExecuteQueryArgs, reply *Exec
 	}
 
 	// For SELECT statements, execute immediately
-	result, err := ipfsdb.ExecuteQuery(h.Dispatcher.ipfsApi, args.DbName, args.Query, "")
+	result, err := core.ExecuteQuery(h.Dispatcher.ipfsApi, args.DbName, args.Query, "")
 	if err != nil {
 		return err
 	}
@@ -161,7 +162,7 @@ type GetTableSchemaResult struct {
 
 func (h *WWFS) GetTableSchema(r *http.Request, args *GetTableSchemaArgs, reply *GetTableSchemaResult) error {
 	sh := shell.NewShell(h.Dispatcher.ipfsApi)
-	db, err := ipfsdb.LoadDatabase(sh, args.DbName)
+	db, err := core.LoadDatabase(sh, args.DbName)
 	if err != nil {
 		return err
 	}
@@ -169,11 +170,11 @@ func (h *WWFS) GetTableSchema(r *http.Request, args *GetTableSchemaArgs, reply *
 	if !ok {
 		return fmt.Errorf("table %s not found", args.TableName)
 	}
-	table, err := ipfsdb.LoadTable(sh, tableCID)
+	table, err := core.LoadTable(sh, tableCID)
 	if err != nil {
 		return err
 	}
-	schema, err := ipfsdb.LoadSchema(sh, table.SchemaCid)
+	schema, err := core.LoadSchema(sh, table.SchemaCid)
 	if err != nil {
 		return err
 	}
@@ -193,7 +194,7 @@ type ExportResult struct {
 
 func (h *WWFS) Export(r *http.Request, args *ExportArgs, reply *ExportResult) error {
 	sh := shell.NewShell(h.Dispatcher.ipfsApi)
-	db, err := ipfsdb.LoadDatabase(sh, args.DbName)
+	db, err := core.LoadDatabase(sh, args.DbName)
 	if err != nil {
 		return err
 	}
@@ -202,13 +203,13 @@ func (h *WWFS) Export(r *http.Request, args *ExportArgs, reply *ExportResult) er
 	if args.TableName == "" {
 		allData := make(map[string][]map[string]interface{})
 		for tableName, tableCID := range db.Tables {
-			table, err := ipfsdb.LoadTable(sh, tableCID)
+			table, err := core.LoadTable(sh, tableCID)
 			if err != nil {
 				continue
 			} // skip tables that fail to load
 			var tableRows []map[string]interface{}
 			for _, pageCID := range table.PageCids {
-				page, err := ipfsdb.LoadPage(sh, pageCID)
+				page, err := core.LoadPage(sh, pageCID)
 				if err != nil {
 					continue
 				}
@@ -236,13 +237,13 @@ func (h *WWFS) Export(r *http.Request, args *ExportArgs, reply *ExportResult) er
 	if !ok {
 		return fmt.Errorf("table %s not found", args.TableName)
 	}
-	table, err := ipfsdb.LoadTable(sh, tableCID)
+	table, err := core.LoadTable(sh, tableCID)
 	if err != nil {
 		return err
 	}
 	var allRows []map[string]interface{}
 	for _, pageCID := range table.PageCids {
-		page, err := ipfsdb.LoadPage(sh, pageCID)
+		page, err := core.LoadPage(sh, pageCID)
 		if err != nil {
 			continue
 		}
@@ -276,14 +277,14 @@ type GetContentCIDResult struct {
 func (h *WWFS) GetContentCID(r *http.Request, args *GetContentCIDArgs, reply *GetContentCIDResult) error {
 	sh := shell.NewShell(h.Dispatcher.ipfsApi)
 	// Loading the database ensures the cache is populated
-	db, err := ipfsdb.LoadDatabase(sh, args.DbName)
+	db, err := core.LoadDatabase(sh, args.DbName)
 	if err != nil {
 		return err
 	}
 
 	// DB export
 	if args.TableName == "" {
-		dbCID, ok := ipfsdb.ReadCache(args.DbName)
+		dbCID, ok := leveldb.ReadCache(args.DbName)
 		if !ok {
 			return fmt.Errorf("could not find database CID in cache")
 		}
@@ -346,7 +347,7 @@ func (h *WWFS) ForkDatabase(r *http.Request, args *ForkDatabaseArgs, reply *Fork
 	}
 
 	// 4. Add the new database object to IPFS
-	newDbCID, err := ipfsdb.AddObject(sh, newDb)
+	newDbCID, err := core.AddObject(sh, newDb)
 	if err != nil {
 		return fmt.Errorf("failed to save forked database object: %w", err)
 	}
@@ -375,12 +376,12 @@ func (h *WWFS) ForkDatabase(r *http.Request, args *ForkDatabaseArgs, reply *Fork
 	if err != nil {
 		return err
 	}
-	if err := ipfsdb.PutToCache([]byte("registry:"+args.NewDbName), entryData); err != nil {
+	if err := leveldb.PutToCache([]byte("registry:"+args.NewDbName), entryData); err != nil {
 		return fmt.Errorf("failed to save forked database to registry: %w", err)
 	}
 
 	// 8. Update the cache with the new database CID
-	ipfsdb.UpdateCache(args.NewDbName, newDbCID)
+	leveldb.UpdateCache(args.NewDbName, newDbCID)
 
 	// 9. Return the new program ID and private key
 	reply.ProgramID = key.Id
@@ -400,7 +401,7 @@ type DeleteDatabaseResult struct {
 }
 
 func (h *WWFS) DeleteDatabase(r *http.Request, args *DeleteDatabaseArgs, reply *DeleteDatabaseResult) error {
-	err := ipfsdb.DeleteDatabase(args.DbName)
+	err := core.DeleteDatabase(args.DbName)
 	if err != nil {
 		return err
 	}

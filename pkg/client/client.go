@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 )
 
 type RpcClient struct {
@@ -240,7 +240,7 @@ func (c *RpcClient) GetContentCID(dbName, tableName string) (string, error) {
 
 // --- ForkDatabase ---
 type ForkDatabaseArgs struct {
-	NewDbName   string `json:"new_db_name"`
+	NewDbName     string `json:"new_db_name"`
 	SourceRootCID string `json:"source_root_cid"`
 }
 

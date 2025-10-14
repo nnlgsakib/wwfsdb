@@ -1,4 +1,4 @@
-package ipfsdb
+package core
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	"github.com/nnlgsakib/wwfsdb/pkg/sql"
 	"google.golang.org/protobuf/proto"
 )
@@ -30,7 +31,7 @@ func Migrate(ipfsAPI, dbName, tableName string, stmt sqlparser.Statement) (strin
 		return "", err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 
 	PublishAsync(sh, dbName, newDbCID)
 
@@ -122,7 +123,7 @@ func Drop(ipfsAPI, dbName string, ddl *sqlparser.DDL) error {
 		return err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 
 	PublishAsync(sh, dbName, newDbCID)
 	return nil

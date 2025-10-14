@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/rpc"
 	"github.com/gorilla/rpc/json"
 	shell "github.com/ipfs/go-ipfs-api"
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/blastrain/vitess-sqlparser/sqlparser"
+	"github.com/nnlgsakib/wwfsdb/pkg/core"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 )
 
 // --- Job Queue / Dispatcher ---
@@ -71,7 +72,7 @@ func (d *Dispatcher) BeginTransaction(dbName string) (string, error) {
 	sh := shell.NewShell(d.ipfsApi)
 
 	// Load the initial state of the database.
-	db, err := ipfsdb.LoadDatabase(sh, dbName)
+	db, err := core.LoadDatabase(sh, dbName)
 	if err != nil {
 		return "", fmt.Errorf("could not load database '%s': %w", dbName, err)
 	}
@@ -103,14 +104,14 @@ func (d *Dispatcher) CommitTransaction(sessionID string) (string, error) {
 	defer txn.mu.Unlock()
 
 	// Add the final database state to IPFS
-	finalCID, err := ipfsdb.AddObject(txn.sh, txn.dbState)
+	finalCID, err := core.AddObject(txn.sh, txn.dbState)
 	if err != nil {
 		return "", fmt.Errorf("failed to save committed state to IPFS: %w", err)
 	}
 
 	// Update cache and publish to IPNS
-	ipfsdb.UpdateCache(txn.dbName, finalCID)
-	ipfsdb.PublishAsync(txn.sh, txn.dbName, finalCID)
+	leveldb.UpdateCache(txn.dbName, finalCID)
+	core.PublishAsync(txn.sh, txn.dbName, finalCID)
 
 	return fmt.Sprintf("Commit successful. New database version: %s", finalCID), nil
 }
@@ -141,15 +142,15 @@ func (d *Dispatcher) ExecuteInTransaction(sessionID string, stmt sqlparser.State
 	txn.lastAccess = time.Now()
 
 	// Verify signature for write operations
-	if !ipfsdb.IsReadQuery(stmt) {
-		err := ipfsdb.VerifySignature(txn.dbState, txn.dbName, query, signature)
+	if !core.IsReadQuery(stmt) {
+		err := core.VerifySignature(txn.dbState, txn.dbName, query, signature)
 		if err != nil {
 			return "", fmt.Errorf("unauthorized: %w", err)
 		}
 	}
 
 	// Execute the statement against the transaction's in-memory database state.
-	newDbState, result, err := ipfsdb.ExecuteOnDB(txn.sh, txn.dbName, txn.dbState, stmt)
+	newDbState, result, err := core.ExecuteOnDB(txn.sh, txn.dbName, txn.dbState, stmt)
 	if err != nil {
 		return "", err
 	}
@@ -176,7 +177,7 @@ func (d *Dispatcher) cleanupStaleTransactions() {
 // worker processes jobs from a single database queue.
 func (d *Dispatcher) worker(queue chan Job) {
 	for job := range queue {
-		result, err := ipfsdb.ExecuteQuery(d.ipfsApi, job.DbName, job.Query, job.Signature)
+		result, err := core.ExecuteQuery(d.ipfsApi, job.DbName, job.Query, job.Signature)
 		if err != nil {
 			job.ErrChan <- err
 		} else {

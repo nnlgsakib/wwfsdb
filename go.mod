@@ -4,7 +4,6 @@ go 1.24.8
 
 require (
 	github.com/blastrain/vitess-sqlparser v0.0.0-20201030050434-a139afbb1aba
-	github.com/google/uuid v1.3.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/rpc v1.2.1
 	github.com/ipfs/go-ipfs-api v0.6.0

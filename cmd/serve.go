@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	"github.com/nnlgsakib/wwfsdb/pkg/rpc"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,11 +16,11 @@ var serveCmd = &cobra.Command{
 	Short: "Start a JSON-RPC server to listen for queries",
 	Run: func(cmd *cobra.Command, args []string) {
 		cachePath := viper.GetString("cache-path")
-		if err := ipfsdb.InitCache(cachePath); err != nil {
+		if err := leveldb.InitCache(cachePath); err != nil {
 			fmt.Println("Error initializing cache:", err)
 			os.Exit(1)
 		}
-		defer ipfsdb.CloseCache()
+		defer leveldb.CloseCache()
 
 		ipfsApi := viper.GetString("ipfs-api")
 		server := rpc.NewServer(ipfsApi)

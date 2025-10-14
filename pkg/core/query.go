@@ -1,4 +1,4 @@
-package ipfsdb
+package core
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
 	"github.com/nnlgsakib/wwfsdb/pkg/sql"
 	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 )

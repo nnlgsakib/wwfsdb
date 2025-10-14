@@ -1,11 +1,12 @@
-package ipfsdb
+package core
 
 import (
 	"fmt"
 
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	"github.com/nnlgsakib/wwfsdb/pkg/sql"
 	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
@@ -31,7 +32,7 @@ func Insert(ipfsAPI, dbName, tableName string, insert *sqlparser.Insert) error {
 		return err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 	PublishAsync(sh, dbName, newDbCID)
 	return nil
 }
@@ -203,7 +204,7 @@ func Update(ipfsAPI, dbName, tableName string, update *sqlparser.Update) (int, e
 		return 0, err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 	PublishAsync(sh, dbName, newDbCID)
 	return updatedCount, nil
 }
@@ -329,7 +330,7 @@ func Delete(ipfsAPI, dbName, tableName string, delete *sqlparser.Delete) (int, e
 		return 0, err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 	PublishAsync(sh, dbName, newDbCID)
 	return deletedCount, nil
 }

@@ -1,4 +1,4 @@
-package ipfsdb
+package core
 
 import (
 	"bytes"
@@ -10,7 +10,8 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
-	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	pb "github.com/nnlgsakib/wwfsdb/pkg/core/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/leveldb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -63,13 +64,13 @@ func CreateDatabase(ipfsAPI, dbName string) (map[string]string, error) {
 		return nil, err
 	}
 
-	err = PutToCache([]byte("registry:"+dbName), entryData)
+	err = leveldb.PutToCache([]byte("registry:"+dbName), entryData)
 	if err != nil {
 		return nil, err
 	}
 
 	// 7. Update the cache with the new database CID
-	UpdateCache(dbName, dbCID)
+	leveldb.UpdateCache(dbName, dbCID)
 
 	result := map[string]string{
 		"program_id":  key.Id,
@@ -85,12 +86,12 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*pb.Database, error) {
 	var err error
 
 	// 1. Try to load the database CID from cache
-	cachedCID, ok := ReadCache(dbName)
+	cachedCID, ok := leveldb.ReadCache(dbName)
 	if ok {
 		dbCID = cachedCID
 	} else {
 		// 2. If not in cache, read the registry from LevelDB to get the program ID
-		entryData, err := GetFromCache([]byte("registry:" + dbName))
+		entryData, err := leveldb.GetFromCache([]byte("registry:" + dbName))
 		if err != nil {
 			return nil, fmt.Errorf("database %s not found in registry", dbName)
 		}
@@ -107,7 +108,7 @@ func LoadDatabase(sh *shell.Shell, dbName string) (*pb.Database, error) {
 		}
 
 		// 4. Update the cache with the resolved CID
-		UpdateCache(dbName, dbCID)
+		leveldb.UpdateCache(dbName, dbCID)
 	}
 
 	// 5. Cat the database object
@@ -194,7 +195,7 @@ func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 		return "", err
 	}
 
-	UpdateCache(dbName, newDbCID)
+	leveldb.UpdateCache(dbName, newDbCID)
 	PublishAsync(sh, dbName, newDbCID)
 
 	return result, nil
@@ -295,5 +296,5 @@ func VerifySignature(db *pb.Database, dbName, query, signature string) error {
 }
 
 func DeleteDatabase(dbName string) error {
-	return DeleteFromCache([]byte("registry:" + dbName))
+	return leveldb.DeleteFromCache([]byte("registry:" + dbName))
 }
