@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	"github.com/nnlgsakib/wwfsdb/pkg/auth"
 	"github.com/nnlgsakib/wwfsdb/pkg/ipfsdb"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
-	"github.com/blastrain/vitess-sqlparser/sqlparser"
+	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -214,10 +215,10 @@ func (h *WWFS) Export(r *http.Request, args *ExportArgs, reply *ExportResult) er
 				for _, row := range page.Rows {
 					rowData := make(map[string]interface{})
 					for colName, valAny := range row.Values {
-						val, _ := ipfsdb.FromAny(valAny)
+						val, _ := utils.FromAny(valAny)
 						rowData[colName] = val
 					}
-				tableRows = append(tableRows, rowData)
+					tableRows = append(tableRows, rowData)
 				}
 			}
 			allData[tableName] = tableRows
@@ -248,7 +249,7 @@ func (h *WWFS) Export(r *http.Request, args *ExportArgs, reply *ExportResult) er
 		for _, row := range page.Rows {
 			rowData := make(map[string]interface{})
 			for colName, valAny := range row.Values {
-				val, _ := ipfsdb.FromAny(valAny)
+				val, _ := utils.FromAny(valAny)
 				rowData[colName] = val
 			}
 			allRows = append(allRows, rowData)
@@ -301,7 +302,7 @@ func (h *WWFS) GetContentCID(r *http.Request, args *GetContentCIDArgs, reply *Ge
 
 // --- Method: wwfs_forkDatabase ---
 type ForkDatabaseArgs struct {
-	NewDbName   string `json:"new_db_name"`
+	NewDbName     string `json:"new_db_name"`
 	SourceRootCID string `json:"source_root_cid"`
 }
 

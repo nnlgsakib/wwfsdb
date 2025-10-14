@@ -6,6 +6,8 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/sql"
+	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -94,7 +96,7 @@ func InsertDB(sh *shell.Shell, db *pb.Database, tableName string, insert *sqlpar
 			var err error
 			switch v := expr.(type) {
 			case *sqlparser.SQLVal:
-				val, err = ValidateAndCastValue(string(v.Val), colInSchema.Type)
+				val, err = sql.ValidateAndCastValue(string(v.Val), colInSchema.Type)
 				if err != nil {
 					return nil, fmt.Errorf("validation error for column '%s': %w", colNameStr, err)
 				}
@@ -259,7 +261,7 @@ func UpdateDB(sh *shell.Shell, db *pb.Database, tableName string, update *sqlpar
 					}
 
 					// Convert the evaluated value to an Any type for storage
-					castedValue, err := ToAny(newValue)
+					castedValue, err := utils.ToAny(newValue)
 					if err != nil {
 						return nil, 0, fmt.Errorf("error casting new value for column '%s': %w", setColumn, err)
 					}
@@ -394,7 +396,7 @@ func DeleteDB(sh *shell.Shell, db *pb.Database, tableName string, delete *sqlpar
 				newPageCIDs = append(newPageCIDs, newPageCID)
 			}
 		} else {
-			newPageCIDs = append(newPageCIDs, pageCID) 
+			newPageCIDs = append(newPageCIDs, pageCID)
 		}
 	}
 

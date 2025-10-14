@@ -1,4 +1,4 @@
-package ipfsdb
+package utils
 
 import (
 	"fmt"

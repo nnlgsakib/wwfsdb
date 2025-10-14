@@ -1,4 +1,4 @@
-package ipfsdb
+package sql
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -77,5 +78,5 @@ func ValidateAndCastValue(value string, dataType string) (*anypb.Any, error) {
 		return nil, err
 	}
 
-	return ToAny(val)
+	return utils.ToAny(val)
 }

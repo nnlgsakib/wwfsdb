@@ -9,6 +9,8 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/sql"
+	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 )
 
 // CombinedRow represents a row resulting from a join, mapping table names to their respective row data.
@@ -41,11 +43,11 @@ func Query(ipfsAPI, dbName, queryString string) ([]map[string]interface{}, error
 func processTableExprForSchemas(sh *shell.Shell, db *pb.Database, tableExpr sqlparser.TableExpr, schemas map[string]*pb.Schema, aliases map[string]string) error {
 	switch expr := tableExpr.(type) {
 	case *sqlparser.AliasedTableExpr:
-		tableName, err := extractTableName(expr)
+		tableName, err := sql.ExtractTableName(expr)
 		if err != nil {
 			return fmt.Errorf("failed to extract table name: %w", err)
 		}
-		
+
 		tableCID, ok := db.Tables[tableName]
 		if !ok {
 			return fmt.Errorf("table %s not found", tableName)
@@ -58,10 +60,10 @@ func processTableExprForSchemas(sh *shell.Shell, db *pb.Database, tableExpr sqlp
 		if err != nil {
 			return err
 		}
-		
+
 		// Store schema under original table name
 		schemas[tableName] = schema
-		
+
 		// If an alias is specified, also map the alias to the schema
 		if !expr.As.IsEmpty() {
 			aliasName := expr.As.String()
@@ -91,11 +93,11 @@ func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[strin
 		switch expr := tableExpr.(type) {
 		case *sqlparser.AliasedTableExpr:
 			// Handle aliased table expressions: tableName alias
-			tableName, err := extractTableName(expr)
+			tableName, err := sql.ExtractTableName(expr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to extract table name: %w", err)
 			}
-			
+
 			tableCID, ok := db.Tables[tableName]
 			if !ok {
 				return nil, fmt.Errorf("table %s not found", tableName)
@@ -108,10 +110,10 @@ func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[strin
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Store schema under original table name
 			schemas[tableName] = schema
-			
+
 			// If an alias is specified, also map the alias to the schema
 			if !expr.As.IsEmpty() {
 				aliasName := expr.As.String()
@@ -613,19 +615,19 @@ func executeFromClause(sh *shell.Shell, db *pb.Database, from sqlparser.TableExp
 			}
 		} else {
 			// Handle single table expressions (including aliased tables)
-			originalTableName, err := extractTableName(tableExpr)
+			originalTableName, err := sql.ExtractTableName(tableExpr)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Check if this is an aliased table expression to get the alias
 			var tableKey string
 			if aliasedExpr, ok := tableExpr.(*sqlparser.AliasedTableExpr); ok && !aliasedExpr.As.IsEmpty() {
-				tableKey = aliasedExpr.As.String()  // Use alias as the key
+				tableKey = aliasedExpr.As.String() // Use alias as the key
 			} else {
-				tableKey = originalTableName  // Use original name if no alias
+				tableKey = originalTableName // Use original name if no alias
 			}
-			
+
 			tableCID, ok := db.Tables[originalTableName]
 			if !ok {
 				return nil, fmt.Errorf("table %s not found in database", originalTableName)
@@ -704,7 +706,7 @@ func executeJoin(sh *shell.Shell, db *pb.Database, joinExpr *sqlparser.JoinTable
 				for k, v := range rRow {
 					combinedRow[k] = v
 				}
-				
+
 				// Evaluate the join condition
 				result, err := evaluateExpression(combinedRow, joinCondition, schemas)
 				if err != nil {
@@ -748,7 +750,7 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs,
 							continue
 						}
 						for colName, valAny := range rowData.Values {
-							val, _ := FromAny(valAny)
+							val, _ := utils.FromAny(valAny)
 							resultRow[tableName+"."+colName] = val
 						}
 					}
@@ -765,7 +767,7 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs,
 						continue
 					}
 					for colName, valAny := range rowData.Values {
-						val, _ := FromAny(valAny)
+						val, _ := utils.FromAny(valAny)
 						resultRow[tableName+"."+colName] = val
 					}
 				}
@@ -792,7 +794,7 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs,
 func getTableNamesFromClause(from sqlparser.TableExprs) []string {
 	var tableNames []string
 	for _, tableExpr := range from {
-		tableName, err := extractTableName(tableExpr)
+		tableName, err := sql.ExtractTableName(tableExpr)
 		if err == nil {
 			tableNames = append(tableNames, tableName)
 		}
@@ -994,7 +996,7 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 	// Case 1: Identifier is fully qualified (e.g., users.id or a.id where 'a' is an alias)
 	if !ident.Qualifier.IsEmpty() {
 		originalTableName := ident.Qualifier.Name.String()
-		
+
 		// First, check if the qualifier directly matches a schema (could be original name or alias)
 		tableSchema, ok := schemas[originalTableName]
 		if !ok {
@@ -1030,7 +1032,7 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 				}
 			}
 		}
-		
+
 		if !ok {
 			return nil, fmt.Errorf("table %s not found in FROM clause data", originalTableName)
 		}
@@ -1042,7 +1044,7 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 		if !ok {
 			return nil, nil // Column is in schema but not in this specific row's data, return null
 		}
-		return FromAny(valAny)
+		return utils.FromAny(valAny)
 	}
 
 	// Case 2: Identifier is unqualified (e.g., id). We need to find which table it belongs to.
@@ -1062,7 +1064,7 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 				// Now get the value from the row data if it exists
 				if tableData, ok := row[tableName]; ok && tableData != nil {
 					if valAny, dataOk := tableData.Values[ident.Name.String()]; dataOk {
-						val, err := FromAny(valAny)
+						val, err := utils.FromAny(valAny)
 						if err != nil {
 							return nil, err
 						}

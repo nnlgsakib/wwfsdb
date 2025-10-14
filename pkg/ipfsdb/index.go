@@ -6,6 +6,7 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	utils "github.com/nnlgsakib/wwfsdb/pkg/util"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -156,7 +157,7 @@ func UpdateIndexesOnDelete(sh *shell.Shell, table *pb.Table, pageCID string, pag
 }
 
 func valueToString(any *anypb.Any) (string, error) {
-	val, err := FromAny(any)
+	val, err := utils.FromAny(any)
 	if err != nil {
 		return "", err
 	}

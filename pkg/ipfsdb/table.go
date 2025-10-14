@@ -7,6 +7,7 @@ import (
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
 	shell "github.com/ipfs/go-ipfs-api"
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
+	"github.com/nnlgsakib/wwfsdb/pkg/sql"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -44,7 +45,7 @@ func MigrateDB(sh *shell.Shell, db *pb.Database, tableName string, stmt sqlparse
 		return nil, fmt.Errorf("table '%s' already exists in database", tableName)
 	}
 
-	pbSchema, err := extractSchemaFromDDL(stmt)
+	pbSchema, err := sql.ExtractSchemaFromDDL(stmt)
 	if err != nil {
 		return nil, err
 	}

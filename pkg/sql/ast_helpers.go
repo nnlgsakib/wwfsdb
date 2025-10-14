@@ -1,4 +1,4 @@
-package ipfsdb
+package sql
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	pb "github.com/nnlgsakib/wwfsdb/pkg/ipfsdb/proto"
 )
 
-func extractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {
+func ExtractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {
 	createTable, ok := stmt.(*sqlparser.CreateTable)
 	if !ok {
 		return nil, fmt.Errorf("not a create table statement")
@@ -32,7 +32,7 @@ func extractSchemaFromDDL(stmt sqlparser.Statement) (*pb.Schema, error) {
 	return schema, nil
 }
 
-func extractTableName(tableExpr sqlparser.TableExpr) (string, error) {
+func ExtractTableName(tableExpr sqlparser.TableExpr) (string, error) {
 	switch expr := tableExpr.(type) {
 	case *sqlparser.AliasedTableExpr:
 		tableName, ok := expr.Expr.(sqlparser.TableName)
@@ -43,7 +43,7 @@ func extractTableName(tableExpr sqlparser.TableExpr) (string, error) {
 	case *sqlparser.JoinTableExpr:
 		// For JOIN expressions, we need to handle both sides of the join
 		// This is a simplified approach - in practice, you might need more complex handling
-		leftName, err := extractTableName(expr.LeftExpr)
+		leftName, err := ExtractTableName(expr.LeftExpr)
 		if err != nil {
 			return "", err
 		}
