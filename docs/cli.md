@@ -235,30 +235,36 @@ wwfsdb --private-key <key> drop my_app_db "DROP TABLE users"
 
 ### `alter`
 
-Executes an `ALTER TABLE` statement to modify a table's schema.
+Executes an `ALTER TABLE` statement. **Note: The only currently supported action is renaming a table.**
 
 **Usage:**
 ```sh
-wwfsdb --private-key [key] alter [database_name] "ALTER TABLE [table_name] [action]"
+wwfsdb --private-key [key] alter [database_name] "ALTER TABLE [old_table_name] RENAME TO [new_table_name]"
 ```
 
-**Supported Actions:**
+**Example:**
+```sh
+wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users RENAME TO app_users"
+```
 
-- **`ADD COLUMN`**: Adds a new column to a table. Existing rows will have a `null` value for this column until it is updated.
-  ```sh
-  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users ADD COLUMN age INT"
-  ```
+**Unsupported Actions:**
+Actions like `ADD COLUMN`, `DROP COLUMN`, or `RENAME COLUMN` are parsed but are not yet implemented and will not change the table schema.
 
-- **`DROP COLUMN`**: Removes a column from a table's schema. The data for this column in existing rows is not deleted from storage but becomes inaccessible.
-  ```sh
-  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users DROP COLUMN age"
-  ```
+### `deletedatabase`
 
-- **`RENAME COLUMN`**: Renames an existing column.
-  **Important**: This only changes the schema. Existing data will not be accessible under the new column name. A data migration is required to update existing rows.
-  ```sh
-  wwfsdb --private-key <key> alter my_app_db "ALTER TABLE users RENAME COLUMN name TO full_name"
-  ```
+Deletes a database from the local registry. This makes the database inaccessible via its name from the local node.
+
+**Note:** This command does not delete the data from IPFS. The data will persist until it is garbage-collected by the IPFS network. This operation is local and cannot be undone.
+
+**Usage:**
+```sh
+wwfsdb deletedatabase [database_name]
+```
+
+**Example:**
+```sh
+wwfsdb deletedatabase my_app_db
+```
 
 ### `shell`
 
