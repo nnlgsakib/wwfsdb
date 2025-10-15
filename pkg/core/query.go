@@ -22,7 +22,7 @@ type CombinedRow map[string]*pb.Row
 func Query(ipfsAPI, dbName, queryString string) ([]map[string]interface{}, error) {
 	sh := shell.NewShell(ipfsAPI)
 
-	// 1. Load the database
+	// Load the database
 	db, err := LoadDatabase(sh, dbName)
 	if err != nil {
 		return nil, err
@@ -33,12 +33,14 @@ func Query(ipfsAPI, dbName, queryString string) ([]map[string]interface{}, error
 		return nil, fmt.Errorf("failed to parse query: %w", err)
 	}
 
-	selectStmt, ok := stmt.(*sqlparser.Select)
-	if !ok {
-		return nil, fmt.Errorf("query is not a SELECT statement")
+	switch s := stmt.(type) {
+	case *sqlparser.Select:
+		return QueryDB(sh, db, s)
+	case *sqlparser.Union:
+		return executeUnion(sh, db, s)
+	default:
+		return nil, fmt.Errorf("unsupported query type: %T", s)
 	}
-
-	return QueryDB(sh, db, selectStmt)
 }
 
 // Helper function to process a table expression and add its schema to the map
@@ -177,7 +179,7 @@ func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[strin
 
 	// Handle GROUP BY and aggregates
 	if s.GroupBy != nil || isAggregateQuery(s) {
-		results, err := executeAggregateQuery(sh, db, filteredRows, s, schemas)
+		results, err := executeAggregateQuery(sh, db, filteredRows, s, schemas, fromTableNames)
 		if err != nil {
 			return nil, err
 		}
@@ -189,14 +191,14 @@ func QueryDB(sh *shell.Shell, db *pb.Database, s *sqlparser.Select) ([]map[strin
 
 	// Handle ORDER BY for non-aggregate queries
 	if s.OrderBy != nil {
-		applyOrderBy(sh, db, filteredRows, s.OrderBy, schemas)
+		applyOrderBy(sh, db, filteredRows, s.OrderBy, schemas, fromTableNames)
 	}
 
 	// Handle OFFSET and LIMIT
 	finalRows := applyLimitAndOffset(sh, db, filteredRows, s.Limit)
 
 	// Project the final columns
-	results, err := projectColumns(sh, db, s.From, finalRows, s.SelectExprs, schemas)
+	results, err := projectColumns(sh, db, s.From, finalRows, s.SelectExprs, schemas, fromTableNames)
 	if err != nil {
 		return nil, fmt.Errorf("error projecting columns: %w", err)
 	}
@@ -210,16 +212,19 @@ func isAggregateQuery(s *sqlparser.Select) bool {
 			if _, ok := aliasedExpr.Expr.(*sqlparser.FuncExpr); ok {
 				return true
 			}
+			if _, ok := aliasedExpr.Expr.(*sqlparser.Subquery); ok {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-func applyOrderBy(sh *shell.Shell, db *pb.Database, rows []CombinedRow, orderBy sqlparser.OrderBy, schemas map[string]*pb.Schema) {
+func applyOrderBy(sh *shell.Shell, db *pb.Database, rows []CombinedRow, orderBy sqlparser.OrderBy, schemas map[string]*pb.Schema, fromTableNames []string) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		for _, order := range orderBy {
-			valI, _ := evaluateExpressionValue(sh, db, rows[i], order.Expr, schemas, getTableNamesFromClause(nil))
-			valJ, _ := evaluateExpressionValue(sh, db, rows[j], order.Expr, schemas, getTableNamesFromClause(nil))
+			valI, _ := evaluateExpressionValue(sh, db, rows[i], order.Expr, schemas, fromTableNames)
+			valJ, _ := evaluateExpressionValue(sh, db, rows[j], order.Expr, schemas, fromTableNames)
 
 			if valI == nil && valJ == nil {
 				continue
@@ -392,7 +397,7 @@ func applyLimitAndOffsetToMap(sh *shell.Shell, db *pb.Database, rows []map[strin
 	return slicedRows[:rowCount]
 }
 
-func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow, s *sqlparser.Select, schemas map[string]*pb.Schema) ([]map[string]interface{}, error) {
+func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow, s *sqlparser.Select, schemas map[string]*pb.Schema, fromTableNames []string) ([]map[string]interface{}, error) {
 	// Handle non-grouped aggregate query
 	if s.GroupBy == nil {
 		resultRow := make(map[string]interface{})
@@ -401,9 +406,63 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 			if !ok {
 				return nil, fmt.Errorf("unsupported select expression type in aggregate query: %T", colExpr)
 			}
+
+			// Handle CASE expressions
+			if caseExpr, ok := aliasedExpr.Expr.(*sqlparser.CaseExpr); ok {
+				resultColName := aliasedExpr.As.String()
+				if resultColName == "" {
+					resultColName = sqlparser.String(aliasedExpr.Expr)
+				}
+				val, err := evaluateCaseExpression(sh, db, rows, caseExpr, schemas, fromTableNames, true)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating CASE expression: %w", err)
+				}
+				resultRow[resultColName] = val
+				continue
+			}
+
+			// Handle arithmetic expressions in SELECT
+			if binExpr, ok := aliasedExpr.Expr.(*sqlparser.BinaryExpr); ok {
+				resultColName := aliasedExpr.As.String()
+				if resultColName == "" {
+					resultColName = sqlparser.String(aliasedExpr.Expr)
+				}
+				val, err := evaluateAggregateArithmetic(sh, db, rows, binExpr, schemas, fromTableNames)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating arithmetic expression: %w", err)
+				}
+				resultRow[resultColName] = val
+				continue
+			}
+
 			aggExpr, ok := aliasedExpr.Expr.(*sqlparser.FuncExpr)
 			if !ok {
-				// For non-aggregate expressions in derived tables (e.g., total_spent)
+				// Handle subqueries in SELECT clause
+				if subquery, ok := aliasedExpr.Expr.(*sqlparser.Subquery); ok {
+					resultColName := aliasedExpr.As.String()
+					if resultColName == "" {
+						resultColName = sqlparser.String(aliasedExpr.Expr)
+					}
+					subqueryResults, err := executeCorrelatedSubquery(sh, db, subquery.Select.(*sqlparser.Select), nil, schemas)
+					if err != nil {
+						return nil, fmt.Errorf("error executing subquery for column %s: %w", resultColName, err)
+					}
+					if len(subqueryResults) > 1 {
+						return nil, fmt.Errorf("subquery for column %s returned more than one row", resultColName)
+					}
+					if len(subqueryResults) == 0 {
+						resultRow[resultColName] = nil
+						continue
+					}
+					if len(subqueryResults[0]) != 1 {
+						return nil, fmt.Errorf("subquery for column %s must return exactly one column", resultColName)
+					}
+					for _, val := range subqueryResults[0] {
+						resultRow[resultColName] = val
+					}
+					continue
+				}
+				// For non-aggregate expressions in derived tables
 				resultColName := aliasedExpr.As.String()
 				if resultColName == "" {
 					if colName, ok := aliasedExpr.Expr.(*sqlparser.ColName); ok {
@@ -441,6 +500,8 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 			}
 
 			var argName string
+			isDistinct := aggExpr.Distinct
+
 			if len(aggExpr.Exprs) > 0 {
 				if _, ok := aggExpr.Exprs[0].(*sqlparser.StarExpr); ok {
 					argName = "*"
@@ -452,12 +513,51 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 			}
 			resultColName := aliasedExpr.As.String()
 			if resultColName == "" {
-				resultColName = fmt.Sprintf("%s(%s)", strings.ToUpper(aggExpr.Name.String()), argName)
+				distinctStr := ""
+				if isDistinct {
+					distinctStr = "DISTINCT "
+				}
+				resultColName = fmt.Sprintf("%s(%s%s)", strings.ToUpper(aggExpr.Name.String()), distinctStr, argName)
 			}
 
 			switch strings.ToUpper(aggExpr.Name.String()) {
 			case "COUNT":
-				resultRow[resultColName] = len(rows)
+				if isDistinct && argName != "*" {
+					distinctValues := make(map[string]bool)
+					for _, row := range rows {
+						var val interface{}
+						var err error
+						found := false
+						for tableName, tableData := range row {
+							if tableData == nil {
+								continue
+							}
+							if valAny, ok := tableData.Values[argName]; ok {
+								if valAny == nil {
+									continue
+								}
+								val, err = utils.FromAny(valAny)
+								if err != nil {
+									return nil, fmt.Errorf("error converting value for column %s in table %s: %w", argName, tableName, err)
+								}
+								found = true
+								break
+							}
+						}
+						if !found {
+							val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
+							if err != nil {
+								continue
+							}
+						}
+						if val != nil {
+							distinctValues[fmt.Sprintf("%v", val)] = true
+						}
+					}
+					resultRow[resultColName] = len(distinctValues)
+				} else {
+					resultRow[resultColName] = len(rows)
+				}
 			case "SUM", "AVG", "MIN", "MAX":
 				if argName == "*" {
 					return nil, fmt.Errorf("%s requires a column argument", strings.ToUpper(aggExpr.Name.String()))
@@ -466,8 +566,9 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 				var min float64
 				var max float64
 				count := 0
+				distinctValues := make(map[string]float64)
+
 				for i, row := range rows {
-					// Check row data for derived table columns first
 					var val interface{}
 					var err error
 					found := false
@@ -476,6 +577,9 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 							continue
 						}
 						if valAny, ok := tableData.Values[argName]; ok {
+							if valAny == nil {
+								continue
+							}
 							val, err = utils.FromAny(valAny)
 							if err != nil {
 								return nil, fmt.Errorf("error converting value for column %s in table %s: %w", argName, tableName, err)
@@ -485,16 +589,27 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 						}
 					}
 					if !found {
-						// Fallback to schema-based lookup
-						val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, getTableNamesFromClause(s.From))
+						val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
 						if err != nil {
-							return nil, fmt.Errorf("error evaluating column %s: %w", argName, err)
+							continue
 						}
+					}
+					if val == nil {
+						continue
 					}
 					num, isNum := getNumericValue(val)
 					if !isNum {
 						continue
 					}
+
+					if isDistinct {
+						valKey := fmt.Sprintf("%v", num)
+						if _, exists := distinctValues[valKey]; exists {
+							continue
+						}
+						distinctValues[valKey] = num
+					}
+
 					if i == 0 || count == 0 {
 						min = num
 						max = num
@@ -511,7 +626,11 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 
 				switch strings.ToUpper(aggExpr.Name.String()) {
 				case "SUM":
-					resultRow[resultColName] = total
+					if count == 0 {
+						resultRow[resultColName] = nil
+					} else {
+						resultRow[resultColName] = total
+					}
 				case "AVG":
 					if count == 0 {
 						resultRow[resultColName] = nil
@@ -536,6 +655,17 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 			}
 		}
 
+		// Apply HAVING clause if present
+		if s.Having != nil {
+			include, err := evaluateHavingClause(sh, db, resultRow, rows, s.Having.Expr, schemas, fromTableNames)
+			if err != nil {
+				return nil, fmt.Errorf("error evaluating HAVING clause: %w", err)
+			}
+			if !include {
+				return []map[string]interface{}{}, nil
+			}
+		}
+
 		return []map[string]interface{}{resultRow}, nil
 	}
 
@@ -552,7 +682,7 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 		isNilGroup := false
 
 		for i, expr := range s.GroupBy {
-			val, err := evaluateExpressionValue(sh, db, row, expr, schemas, getTableNamesFromClause(s.From))
+			val, err := evaluateExpressionValue(sh, db, row, expr, schemas, fromTableNames)
 			if err != nil {
 				return nil, err
 			}
@@ -592,28 +722,57 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 			if !ok {
 				return nil, fmt.Errorf("unsupported select expression type: %T", colExpr)
 			}
+
 			resultColName := aliasedExpr.As.String()
 			if resultColName == "" {
 				if colName, ok := aliasedExpr.Expr.(*sqlparser.ColName); ok {
 					resultColName = colName.Name.String()
 				} else if funcExpr, ok := aliasedExpr.Expr.(*sqlparser.FuncExpr); ok {
 					if len(funcExpr.Exprs) > 0 {
+						distinctStr := ""
+						if funcExpr.Distinct {
+							distinctStr = "DISTINCT "
+						}
 						if _, ok := funcExpr.Exprs[0].(*sqlparser.StarExpr); ok {
-							resultColName = fmt.Sprintf("%s(*)", strings.ToUpper(funcExpr.Name.String()))
+							resultColName = fmt.Sprintf("%s(%s*)", strings.ToUpper(funcExpr.Name.String()), distinctStr)
 						} else if aliased, ok := funcExpr.Exprs[0].(*sqlparser.AliasedExpr); ok {
 							if colName, ok := aliased.Expr.(*sqlparser.ColName); ok {
-								resultColName = fmt.Sprintf("%s(%s)", strings.ToUpper(funcExpr.Name.String()), colName.Name.String())
+								resultColName = fmt.Sprintf("%s(%s%s)", strings.ToUpper(funcExpr.Name.String()), distinctStr, colName.Name.String())
 							}
 						}
 					}
+				} else if _, ok := aliasedExpr.Expr.(*sqlparser.Subquery); ok {
+					resultColName = sqlparser.String(aliasedExpr.Expr)
 				}
 				if resultColName == "" {
 					resultColName = sqlparser.String(aliasedExpr.Expr)
 				}
 			}
 
+			// Handle CASE expressions
+			if caseExpr, ok := aliasedExpr.Expr.(*sqlparser.CaseExpr); ok {
+				val, err := evaluateCaseExpression(sh, db, group.Rows, caseExpr, schemas, fromTableNames, true)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating CASE expression: %w", err)
+				}
+				resultRow[resultColName] = val
+				continue
+			}
+
+			// Handle arithmetic expressions
+			if binExpr, ok := aliasedExpr.Expr.(*sqlparser.BinaryExpr); ok {
+				val, err := evaluateAggregateArithmetic(sh, db, group.Rows, binExpr, schemas, fromTableNames)
+				if err != nil {
+					return nil, fmt.Errorf("error evaluating arithmetic expression: %w", err)
+				}
+				resultRow[resultColName] = val
+				continue
+			}
+
 			if aggExpr, ok := aliasedExpr.Expr.(*sqlparser.FuncExpr); ok {
 				var argName string
+				isDistinct := aggExpr.Distinct
+
 				if len(aggExpr.Exprs) > 0 {
 					if _, ok := aggExpr.Exprs[0].(*sqlparser.StarExpr); ok {
 						argName = "*"
@@ -626,7 +785,42 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 
 				switch strings.ToUpper(aggExpr.Name.String()) {
 				case "COUNT":
-					resultRow[resultColName] = len(group.Rows)
+					if isDistinct && argName != "*" {
+						distinctValues := make(map[string]bool)
+						for _, row := range group.Rows {
+							var val interface{}
+							var err error
+							found := false
+							for tableName, tableData := range row {
+								if tableData == nil {
+									continue
+								}
+								if valAny, ok := tableData.Values[argName]; ok {
+									if valAny == nil {
+										continue
+									}
+									val, err = utils.FromAny(valAny)
+									if err != nil {
+										return nil, fmt.Errorf("error converting value for column %s in table %s: %w", argName, tableName, err)
+									}
+									found = true
+									break
+								}
+							}
+							if !found {
+								val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
+								if err != nil {
+									continue
+								}
+							}
+							if val != nil {
+								distinctValues[fmt.Sprintf("%v", val)] = true
+							}
+						}
+						resultRow[resultColName] = len(distinctValues)
+					} else {
+						resultRow[resultColName] = len(group.Rows)
+					}
 				case "SUM", "AVG", "MIN", "MAX":
 					if argName == "*" {
 						return nil, fmt.Errorf("%s requires a column argument", strings.ToUpper(aggExpr.Name.String()))
@@ -635,8 +829,9 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 					var min float64
 					var max float64
 					count := 0
+					distinctValues := make(map[string]float64)
+
 					for i, row := range group.Rows {
-						// Check row data for derived table columns first
 						var val interface{}
 						var err error
 						found := false
@@ -645,6 +840,9 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 								continue
 							}
 							if valAny, ok := tableData.Values[argName]; ok {
+								if valAny == nil {
+									continue
+								}
 								val, err = utils.FromAny(valAny)
 								if err != nil {
 									return nil, fmt.Errorf("error converting value for column %s in table %s: %w", argName, tableName, err)
@@ -654,16 +852,27 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 							}
 						}
 						if !found {
-							// Fallback to schema-based lookup
-							val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, getTableNamesFromClause(s.From))
+							val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
 							if err != nil {
-								return nil, fmt.Errorf("error evaluating column %s: %w", argName, err)
+								continue
 							}
+						}
+						if val == nil {
+							continue
 						}
 						num, isNum := getNumericValue(val)
 						if !isNum {
 							continue
 						}
+
+						if isDistinct {
+							valKey := fmt.Sprintf("%v", num)
+							if _, exists := distinctValues[valKey]; exists {
+								continue
+							}
+							distinctValues[valKey] = num
+						}
+
 						if i == 0 || count == 0 {
 							min = num
 							max = num
@@ -680,7 +889,11 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 
 					switch strings.ToUpper(aggExpr.Name.String()) {
 					case "SUM":
-						resultRow[resultColName] = total
+						if count == 0 {
+							resultRow[resultColName] = nil
+						} else {
+							resultRow[resultColName] = total
+						}
 					case "AVG":
 						if count == 0 {
 							resultRow[resultColName] = nil
@@ -703,13 +916,29 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 				default:
 					return nil, fmt.Errorf("unsupported aggregate function: %s", aggExpr.Name.String())
 				}
+			} else if subquery, ok := aliasedExpr.Expr.(*sqlparser.Subquery); ok {
+				subqueryResults, err := executeCorrelatedSubquery(sh, db, subquery.Select.(*sqlparser.Select), group.Rows[0], schemas)
+				if err != nil {
+					return nil, fmt.Errorf("error executing subquery for column %s: %w", resultColName, err)
+				}
+				if len(subqueryResults) > 1 {
+					return nil, fmt.Errorf("subquery for column %s returned more than one row", resultColName)
+				}
+				if len(subqueryResults) == 0 {
+					resultRow[resultColName] = nil
+					continue
+				}
+				if len(subqueryResults[0]) != 1 {
+					return nil, fmt.Errorf("subquery for column %s must return exactly one column", resultColName)
+				}
+				for _, val := range subqueryResults[0] {
+					resultRow[resultColName] = val
+				}
 			} else {
-				// Non-aggregate column (should be part of GROUP BY or derived table)
 				if len(group.Rows) == 0 {
 					resultRow[resultColName] = nil
 				} else {
 					if colName, ok := aliasedExpr.Expr.(*sqlparser.ColName); ok {
-						// Check derived table columns first
 						qualifier := colName.Qualifier.Name.String()
 						for tableName, tableData := range group.Rows[0] {
 							if tableData == nil {
@@ -728,15 +957,14 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 							}
 						}
 						if _, exists := resultRow[resultColName]; !exists {
-							// Fallback to schema-based lookup
-							val, err := evaluateExpressionValue(sh, db, group.Rows[0], aliasedExpr.Expr, schemas, getTableNamesFromClause(s.From))
+							val, err := evaluateExpressionValue(sh, db, group.Rows[0], aliasedExpr.Expr, schemas, fromTableNames)
 							if err != nil {
 								return nil, err
 							}
 							resultRow[resultColName] = val
 						}
 					} else {
-						val, err := evaluateExpressionValue(sh, db, group.Rows[0], aliasedExpr.Expr, schemas, getTableNamesFromClause(s.From))
+						val, err := evaluateExpressionValue(sh, db, group.Rows[0], aliasedExpr.Expr, schemas, fromTableNames)
 						if err != nil {
 							return nil, err
 						}
@@ -745,12 +973,547 @@ func executeAggregateQuery(sh *shell.Shell, db *pb.Database, rows []CombinedRow,
 				}
 			}
 		}
+
+		// Apply HAVING clause if present
+		if s.Having != nil {
+			include, err := evaluateHavingClause(sh, db, resultRow, group.Rows, s.Having.Expr, schemas, fromTableNames)
+			if err != nil {
+				return nil, fmt.Errorf("error evaluating HAVING clause: %w", err)
+			}
+			if !include {
+				continue
+			}
+		}
+
 		finalResults = append(finalResults, resultRow)
 	}
 
 	return finalResults, nil
 }
 
+// New function to evaluate HAVING clause using computed aggregate values
+func evaluateHavingClause(sh *shell.Shell, db *pb.Database, resultRow map[string]interface{}, rows []CombinedRow, expr sqlparser.Expr, schemas map[string]*pb.Schema, fromTableNames []string) (bool, error) {
+	if expr == nil {
+		return true, nil
+	}
+
+	switch e := expr.(type) {
+	case *sqlparser.AndExpr:
+		left, err := evaluateHavingClause(sh, db, resultRow, rows, e.Left, schemas, fromTableNames)
+		if err != nil {
+			return false, err
+		}
+		if !left {
+			return false, nil
+		}
+		return evaluateHavingClause(sh, db, resultRow, rows, e.Right, schemas, fromTableNames)
+
+	case *sqlparser.OrExpr:
+		left, err := evaluateHavingClause(sh, db, resultRow, rows, e.Left, schemas, fromTableNames)
+		if err != nil {
+			return false, err
+		}
+		if left {
+			return true, nil
+		}
+		return evaluateHavingClause(sh, db, resultRow, rows, e.Right, schemas, fromTableNames)
+
+	case *sqlparser.ComparisonExpr:
+		left, err := evaluateHavingExpression(sh, db, resultRow, rows, e.Left, schemas, fromTableNames)
+		if err != nil {
+			return false, fmt.Errorf("error evaluating left operand: %w", err)
+		}
+
+		right, err := evaluateHavingExpression(sh, db, resultRow, rows, e.Right, schemas, fromTableNames)
+		if err != nil {
+			return false, fmt.Errorf("error evaluating right operand: %w", err)
+		}
+
+		return compareValuesWithOperator(left, right, e.Operator)
+	}
+
+	return false, fmt.Errorf("unsupported HAVING expression type: %T", expr)
+}
+
+// Helper function to evaluate expressions in HAVING clause
+func evaluateHavingExpression(sh *shell.Shell, db *pb.Database, resultRow map[string]interface{}, rows []CombinedRow, expr sqlparser.Expr, schemas map[string]*pb.Schema, fromTableNames []string) (interface{}, error) {
+	switch e := expr.(type) {
+	case *sqlparser.FuncExpr:
+		// Compute the aggregate on the fly for HAVING clause
+		return evaluateAggregateInHaving(sh, db, rows, e, schemas, fromTableNames)
+
+	case *sqlparser.Subquery:
+		// Execute subquery
+		subqueryResults, err := executeCorrelatedSubquery(sh, db, e.Select.(*sqlparser.Select), nil, schemas)
+		if err != nil {
+			return nil, fmt.Errorf("error executing subquery: %w", err)
+		}
+		if len(subqueryResults) > 1 {
+			return nil, fmt.Errorf("subquery returned more than one row")
+		}
+		if len(subqueryResults) == 0 {
+			return nil, nil
+		}
+		if len(subqueryResults[0]) != 1 {
+			return nil, fmt.Errorf("subquery must return exactly one column")
+		}
+		for _, val := range subqueryResults[0] {
+			return val, nil
+		}
+		return nil, nil
+
+	case *sqlparser.SQLVal:
+		switch e.Type {
+		case sqlparser.StrVal:
+			return string(e.Val), nil
+		case sqlparser.IntVal:
+			i, err := strconv.ParseInt(string(e.Val), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid integer value: %s", string(e.Val))
+			}
+			return i, nil
+		case sqlparser.FloatVal:
+			f, err := strconv.ParseFloat(string(e.Val), 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid float value: %s", string(e.Val))
+			}
+			return f, nil
+		default:
+			return nil, fmt.Errorf("unsupported SQLVal type: %v", e.Type)
+		}
+
+	case *sqlparser.ColName:
+		// Try to get from resultRow first (for GROUP BY columns)
+		if val, ok := resultRow[e.Name.String()]; ok {
+			return val, nil
+		}
+		return nil, fmt.Errorf("column %s not found", e.Name.String())
+
+	default:
+		return nil, fmt.Errorf("unsupported HAVING expression: %T", e)
+	}
+}
+
+// Helper to evaluate aggregate functions within HAVING clause
+func evaluateAggregateInHaving(sh *shell.Shell, db *pb.Database, rows []CombinedRow, funcExpr *sqlparser.FuncExpr, schemas map[string]*pb.Schema, fromTableNames []string) (interface{}, error) {
+	var argName string
+	isDistinct := funcExpr.Distinct
+
+	if len(funcExpr.Exprs) > 0 {
+		if _, ok := funcExpr.Exprs[0].(*sqlparser.StarExpr); ok {
+			argName = "*"
+		} else if aliased, ok := funcExpr.Exprs[0].(*sqlparser.AliasedExpr); ok {
+			if colName, ok := aliased.Expr.(*sqlparser.ColName); ok {
+				argName = colName.Name.String()
+			}
+		}
+	}
+
+	switch strings.ToUpper(funcExpr.Name.String()) {
+	case "COUNT":
+		if isDistinct && argName != "*" {
+			distinctValues := make(map[string]bool)
+			for _, row := range rows {
+				var val interface{}
+				var err error
+				found := false
+				for _, tableData := range row {
+					if tableData == nil {
+						continue
+					}
+					if valAny, ok := tableData.Values[argName]; ok {
+						if valAny == nil {
+							continue
+						}
+						val, err = utils.FromAny(valAny)
+						if err != nil {
+							continue
+						}
+						found = true
+						break
+					}
+				}
+				if !found {
+					val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
+					if err != nil {
+						continue
+					}
+				}
+				if val != nil {
+					distinctValues[fmt.Sprintf("%v", val)] = true
+				}
+			}
+			return len(distinctValues), nil
+		}
+		return len(rows), nil
+
+	case "SUM", "AVG", "MIN", "MAX":
+		if argName == "*" {
+			return nil, fmt.Errorf("%s requires a column argument", strings.ToUpper(funcExpr.Name.String()))
+		}
+		var total float64
+		var min float64
+		var max float64
+		count := 0
+		distinctValues := make(map[string]float64)
+
+		for i, row := range rows {
+			var val interface{}
+			var err error
+			found := false
+			for _, tableData := range row {
+				if tableData == nil {
+					continue
+				}
+				if valAny, ok := tableData.Values[argName]; ok {
+					if valAny == nil {
+						continue
+					}
+					val, err = utils.FromAny(valAny)
+					if err != nil {
+						continue
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				val, err = evaluateExpressionValue(sh, db, row, &sqlparser.ColName{Name: sqlparser.NewColIdent(argName)}, schemas, fromTableNames)
+				if err != nil {
+					continue
+				}
+			}
+			if val == nil {
+				continue
+			}
+			num, isNum := getNumericValue(val)
+			if !isNum {
+				continue
+			}
+
+			if isDistinct {
+				valKey := fmt.Sprintf("%v", num)
+				if _, exists := distinctValues[valKey]; exists {
+					continue
+				}
+				distinctValues[valKey] = num
+			}
+
+			if i == 0 || count == 0 {
+				min = num
+				max = num
+			}
+			total += num
+			if num < min {
+				min = num
+			}
+			if num > max {
+				max = num
+			}
+			count++
+		}
+
+		switch strings.ToUpper(funcExpr.Name.String()) {
+		case "SUM":
+			if count == 0 {
+				return nil, nil
+			}
+			return total, nil
+		case "AVG":
+			if count == 0 {
+				return nil, nil
+			}
+			return total / float64(count), nil
+		case "MIN":
+			if count == 0 {
+				return nil, nil
+			}
+			return min, nil
+		case "MAX":
+			if count == 0 {
+				return nil, nil
+			}
+			return max, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unsupported aggregate function: %s", funcExpr.Name.String())
+}
+
+// Helper to evaluate CASE expressions with aggregates
+func evaluateCaseExpression(sh *shell.Shell, db *pb.Database, rows []CombinedRow, caseExpr *sqlparser.CaseExpr, schemas map[string]*pb.Schema, fromTableNames []string, isAggregate bool) (interface{}, error) {
+	if !isAggregate {
+		return nil, fmt.Errorf("CASE expressions in non-aggregate context not yet supported")
+	}
+
+	// For aggregate CASE, we need to sum values based on conditions
+	var total float64
+
+	for _, row := range rows {
+		var resultVal interface{}
+		matched := false
+
+		// Evaluate each WHEN clause
+		for _, when := range caseExpr.Whens {
+			condResult, err := evaluateExpression(sh, db, row, when.Cond, schemas, fromTableNames)
+			if err != nil {
+				continue
+			}
+
+			if condResult {
+				// Evaluate the THEN expression
+				thenVal, err := evaluateExpressionValue(sh, db, row, when.Val, schemas, fromTableNames)
+				if err != nil {
+					continue
+				}
+				resultVal = thenVal
+				matched = true
+				break
+			}
+		}
+
+		// If no WHEN matched, use ELSE
+		if !matched && caseExpr.Else != nil {
+			elseVal, err := evaluateExpressionValue(sh, db, row, caseExpr.Else, schemas, fromTableNames)
+			if err != nil {
+				continue
+			}
+			resultVal = elseVal
+		}
+
+		// If no ELSE and no match, result is NULL (0 for sum)
+		if resultVal != nil {
+			num, isNum := getNumericValue(resultVal)
+			if isNum {
+				total += num
+			}
+		}
+	}
+
+	return total, nil
+}
+
+// Helper to evaluate arithmetic expressions with aggregates
+func evaluateAggregateArithmetic(sh *shell.Shell, db *pb.Database, rows []CombinedRow, binExpr *sqlparser.BinaryExpr, schemas map[string]*pb.Schema, fromTableNames []string) (interface{}, error) {
+	// Check if left side is an aggregate
+	leftAgg, leftIsAgg := binExpr.Left.(*sqlparser.FuncExpr)
+	rightAgg, rightIsAgg := binExpr.Right.(*sqlparser.FuncExpr)
+
+	var leftVal, rightVal interface{}
+	var err error
+
+	if leftIsAgg {
+		leftVal, err = evaluateAggregateInHaving(sh, db, rows, leftAgg, schemas, fromTableNames)
+		if err != nil {
+			return nil, err
+		}
+	} else if colName, ok := binExpr.Left.(*sqlparser.ColName); ok {
+		// It's a column - get value from first row (for GROUP BY columns)
+		if len(rows) > 0 {
+			leftVal, err = evaluateExpressionValue(sh, db, rows[0], colName, schemas, fromTableNames)
+			if err != nil {
+				// If evaluation fails, try getting directly from row data
+				for _, tableData := range rows[0] {
+					if tableData == nil {
+						continue
+					}
+					if valAny, ok := tableData.Values[colName.Name.String()]; ok {
+						leftVal, err = utils.FromAny(valAny)
+						if err == nil {
+							break
+						}
+					}
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("no rows available for column evaluation")
+		}
+	} else {
+		if len(rows) > 0 {
+			leftVal, err = evaluateExpressionValue(sh, db, rows[0], binExpr.Left, schemas, fromTableNames)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if rightIsAgg {
+		rightVal, err = evaluateAggregateInHaving(sh, db, rows, rightAgg, schemas, fromTableNames)
+		if err != nil {
+			return nil, err
+		}
+	} else if colName, ok := binExpr.Right.(*sqlparser.ColName); ok {
+		// It's a column - get value from first row (for GROUP BY columns)
+		if len(rows) > 0 {
+			rightVal, err = evaluateExpressionValue(sh, db, rows[0], colName, schemas, fromTableNames)
+			if err != nil {
+				// If evaluation fails, try getting directly from row data
+				for _, tableData := range rows[0] {
+					if tableData == nil {
+						continue
+					}
+					if valAny, ok := tableData.Values[colName.Name.String()]; ok {
+						rightVal, err = utils.FromAny(valAny)
+						if err == nil {
+							break
+						}
+					}
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("no rows available for column evaluation")
+		}
+	} else {
+		if len(rows) > 0 {
+			rightVal, err = evaluateExpressionValue(sh, db, rows[0], binExpr.Right, schemas, fromTableNames)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Handle nil values
+	if leftVal == nil || rightVal == nil {
+		return nil, nil
+	}
+
+	leftNum, leftIsNum := getNumericValue(leftVal)
+	rightNum, rightIsNum := getNumericValue(rightVal)
+
+	if !leftIsNum || !rightIsNum {
+		return nil, fmt.Errorf("arithmetic operations require numeric values, got %T and %T", leftVal, rightVal)
+	}
+
+	switch binExpr.Operator {
+	case "+":
+		return leftNum + rightNum, nil
+	case "-":
+		return leftNum - rightNum, nil
+	case "*":
+		return leftNum * rightNum, nil
+	case "/":
+		if rightNum == 0 {
+			return nil, fmt.Errorf("division by zero")
+		}
+		return leftNum / rightNum, nil
+	default:
+		return nil, fmt.Errorf("unsupported operator: %s", binExpr.Operator)
+	}
+}
+
+// Fixed executeUnion function
+func executeUnion(sh *shell.Shell, db *pb.Database, union *sqlparser.Union) ([]map[string]interface{}, error) {
+	// Execute the left SELECT statement
+	var leftResults []map[string]interface{}
+	var err error
+
+	if leftSelect, ok := union.Left.(*sqlparser.Select); ok {
+		leftResults, err = QueryDB(sh, db, leftSelect)
+	} else if leftUnion, ok := union.Left.(*sqlparser.Union); ok {
+		leftResults, err = executeUnion(sh, db, leftUnion)
+	} else {
+		return nil, fmt.Errorf("unsupported left operand in UNION: %T", union.Left)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("error executing left SELECT in UNION: %w", err)
+	}
+
+	// Execute the right SELECT statement
+	var rightResults []map[string]interface{}
+
+	if rightSelect, ok := union.Right.(*sqlparser.Select); ok {
+		rightResults, err = QueryDB(sh, db, rightSelect)
+	} else if rightUnion, ok := union.Right.(*sqlparser.Union); ok {
+		rightResults, err = executeUnion(sh, db, rightUnion)
+	} else {
+		return nil, fmt.Errorf("unsupported right operand in UNION: %T", union.Right)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("error executing right SELECT in UNION: %w", err)
+	}
+
+	// Validate that both SELECT statements have the same number of columns
+	if len(leftResults) > 0 && len(rightResults) > 0 {
+		leftCols := getColumnNames(leftResults[0])
+		rightCols := getColumnNames(rightResults[0])
+		if len(leftCols) != len(rightCols) {
+			return nil, fmt.Errorf("UNION queries must return the same number of columns: left has %d, right has %d", len(leftCols), len(rightCols))
+		}
+	}
+
+	// Combine results
+	combinedResults := make([]map[string]interface{}, 0, len(leftResults)+len(rightResults))
+
+	// For UNION (not UNION ALL), we need to deduplicate
+	if union.Type == "" || union.Type == sqlparser.UnionStr {
+		resultMap := make(map[string]bool) // For deduplication
+
+		for _, row := range leftResults {
+			rowKey := rowToString(row)
+			if !resultMap[rowKey] {
+				combinedResults = append(combinedResults, row)
+				resultMap[rowKey] = true
+			}
+		}
+
+		for _, row := range rightResults {
+			rowKey := rowToString(row)
+			if !resultMap[rowKey] {
+				combinedResults = append(combinedResults, row)
+				resultMap[rowKey] = true
+			}
+		}
+	} else {
+		// UNION ALL - just append
+		combinedResults = append(combinedResults, leftResults...)
+		combinedResults = append(combinedResults, rightResults...)
+	}
+
+	// Apply ORDER BY if present
+	if union.OrderBy != nil {
+		applyOrderByToMap(combinedResults, union.OrderBy, nil)
+	}
+
+	// Apply LIMIT if present
+	if union.Limit != nil {
+		combinedResults = applyLimitAndOffsetToMap(sh, db, combinedResults, union.Limit)
+	}
+
+	return combinedResults, nil
+}
+
+// Helper function to get column names (already exists, but ensuring it's consistent)
+func getColumnNames(row map[string]interface{}) []string {
+	cols := make([]string, 0, len(row))
+	for col := range row {
+		cols = append(cols, col)
+	}
+	sort.Strings(cols) // Ensure consistent order
+	return cols
+}
+
+// Helper function to create string representation (already exists, but ensuring it's consistent)
+func rowToString(row map[string]interface{}) string {
+	var parts []string
+	cols := getColumnNames(row)
+	for _, col := range cols {
+		val := row[col]
+		if val == nil {
+			parts = append(parts, "NULL")
+		} else {
+			parts = append(parts, fmt.Sprintf("%v", val))
+		}
+	}
+	return strings.Join(parts, "||")
+}
 func executeFromClause(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs, schemas map[string]*pb.Schema) ([]CombinedRow, error) {
 	if len(from) == 0 {
 		return []CombinedRow{make(CombinedRow)}, nil
@@ -832,7 +1595,7 @@ func processSubqueryResults(results []map[string]interface{}, aliasName string) 
 		for colName, colValue := range resultMap {
 			anyVal, err := utils.ToAny(colValue)
 			if err != nil {
-				anyVal, _ = utils.ToAny(fmt.Sprintf("%v", colValue))
+				return nil, fmt.Errorf("error converting value for column %s: %w", colName, err)
 			}
 			pbRow.Values[colName] = anyVal
 		}
@@ -865,23 +1628,102 @@ func loadTableRows(sh *shell.Shell, db *pb.Database, tableName, tableKey string)
 	return results, nil
 }
 
+// getCommonColumns identifies common column names between two tables
+func getCommonColumns(leftSchema, rightSchema *pb.Schema) []string {
+	var common []string
+	leftCols := make(map[string]bool)
+	for _, col := range leftSchema.Columns {
+		leftCols[col.Name] = true
+	}
+	for _, col := range rightSchema.Columns {
+		if leftCols[col.Name] {
+			common = append(common, col.Name)
+		}
+	}
+	return common
+}
+
+// createNaturalJoinCondition generates an ON condition for NATURAL JOIN
+func createNaturalJoinCondition(leftTableName, rightTableName string, commonCols []string) sqlparser.Expr {
+	if len(commonCols) == 0 {
+		return nil
+	}
+	var expr sqlparser.Expr
+	for i, col := range commonCols {
+		comparison := &sqlparser.ComparisonExpr{
+			Operator: sqlparser.EqualStr,
+			Left: &sqlparser.ColName{
+				Name:      sqlparser.NewColIdent(col),
+				Qualifier: sqlparser.TableName{Name: sqlparser.NewTableIdent(leftTableName)},
+			},
+			Right: &sqlparser.ColName{
+				Name:      sqlparser.NewColIdent(col),
+				Qualifier: sqlparser.TableName{Name: sqlparser.NewTableIdent(rightTableName)},
+			},
+		}
+		if i == 0 {
+			expr = comparison
+		} else {
+			expr = &sqlparser.AndExpr{Left: expr, Right: comparison}
+		}
+	}
+	return expr
+}
+
+// nullRowForTable creates a row with NULL values for a given table's schema
+func nullRowForTable(tableName string, schema *pb.Schema) *pb.Row {
+	row := &pb.Row{Values: make(map[string]*anypb.Any)}
+	for _, col := range schema.Columns {
+		anyVal, _ := utils.ToAny(nil) // Properly serialize NULL as an anypb.Any
+		row.Values[col.Name] = anyVal
+	}
+	return row
+}
+
 func executeJoin(sh *shell.Shell, db *pb.Database, joinExpr *sqlparser.JoinTableExpr, schemas map[string]*pb.Schema) ([]CombinedRow, error) {
+	// Extract table names for left and right sides
+	leftTables := getTableNamesFromClause(sqlparser.TableExprs{joinExpr.LeftExpr})
+	rightTables := getTableNamesFromClause(sqlparser.TableExprs{joinExpr.RightExpr})
+	if len(leftTables) == 0 || len(rightTables) == 0 {
+		return nil, fmt.Errorf("invalid table names in JOIN")
+	}
+	primaryLeftTable := leftTables[0]
+	primaryRightTable := rightTables[0]
+
+	// Load rows for both sides
 	leftRows, err := executeFromClause(sh, db, sqlparser.TableExprs{joinExpr.LeftExpr}, schemas)
 	if err != nil {
 		return nil, fmt.Errorf("error executing left side of join: %w", err)
 	}
-
 	rightRows, err := executeFromClause(sh, db, sqlparser.TableExprs{joinExpr.RightExpr}, schemas)
 	if err != nil {
 		return nil, fmt.Errorf("error executing right side of join: %w", err)
 	}
 
 	var joinedRows []CombinedRow
-
 	joinCondition := joinExpr.On
 
-	for _, lRow := range leftRows {
-		for _, rRow := range rightRows {
+	// Normalize join type - handle different string representations
+	joinType := strings.ToLower(strings.TrimSpace(joinExpr.Join))
+
+	// Handle NATURAL JOIN
+	if (joinType == "join" || joinType == "") && joinCondition == nil {
+		commonCols := getCommonColumns(schemas[primaryLeftTable], schemas[primaryRightTable])
+		if len(commonCols) > 0 {
+			joinCondition = createNaturalJoinCondition(primaryLeftTable, primaryRightTable, commonCols)
+		}
+		if joinCondition == nil {
+			return crossProduct(leftRows, rightRows), nil
+		}
+	}
+
+	// Track matched rows for outer joins
+	matchedLeft := make(map[int]bool)
+	matchedRight := make(map[int]bool)
+
+	// Perform the join based on condition
+	for i, lRow := range leftRows {
+		for j, rRow := range rightRows {
 			shouldJoin := true
 			if joinCondition != nil {
 				mergedRow := make(CombinedRow)
@@ -892,11 +1734,7 @@ func executeJoin(sh *shell.Shell, db *pb.Database, joinExpr *sqlparser.JoinTable
 					mergedRow[k] = v
 				}
 
-				// Use all table names from both sides of the join
-				leftTables := getTableNamesFromClause(sqlparser.TableExprs{joinExpr.LeftExpr})
-				rightTables := getTableNamesFromClause(sqlparser.TableExprs{joinExpr.RightExpr})
 				joinTableNames := append(leftTables, rightTables...)
-
 				result, err := evaluateExpression(sh, db, mergedRow, joinCondition, schemas, joinTableNames)
 				if err != nil {
 					return nil, fmt.Errorf("error evaluating join condition: %w", err)
@@ -913,17 +1751,89 @@ func executeJoin(sh *shell.Shell, db *pb.Database, joinExpr *sqlparser.JoinTable
 					mergedRow[k] = v
 				}
 				joinedRows = append(joinedRows, mergedRow)
+				matchedLeft[i] = true
+				matchedRight[j] = true
+			}
+		}
+	}
+
+	// Handle LEFT OUTER JOIN or LEFT JOIN
+	if joinType == "left outer join" || joinType == "left join" || joinType == "left" {
+		for i, lRow := range leftRows {
+			if !matchedLeft[i] {
+				mergedRow := make(CombinedRow)
+				for k, v := range lRow {
+					mergedRow[k] = v
+				}
+				// Add NULL rows for right tables
+				for _, tName := range rightTables {
+					if schema, exists := schemas[tName]; exists {
+						mergedRow[tName] = nullRowForTable(tName, schema)
+					}
+				}
+				joinedRows = append(joinedRows, mergedRow)
+			}
+		}
+	}
+
+	// Handle RIGHT OUTER JOIN or RIGHT JOIN
+	if joinType == "right outer join" || joinType == "right join" || joinType == "right" {
+		for j, rRow := range rightRows {
+			if !matchedRight[j] {
+				mergedRow := make(CombinedRow)
+				// Add NULL rows for left tables FIRST
+				for _, tName := range leftTables {
+					if schema, exists := schemas[tName]; exists {
+						mergedRow[tName] = nullRowForTable(tName, schema)
+					}
+				}
+				// Then add right row data
+				for k, v := range rRow {
+					mergedRow[k] = v
+				}
+				joinedRows = append(joinedRows, mergedRow)
+			}
+		}
+	}
+
+	// Handle FULL OUTER JOIN (simulate it since parser doesn't support it natively)
+	if joinType == "full outer join" || joinType == "full" {
+		// Add unmatched left rows
+		for i, lRow := range leftRows {
+			if !matchedLeft[i] {
+				mergedRow := make(CombinedRow)
+				for k, v := range lRow {
+					mergedRow[k] = v
+				}
+				for _, tName := range rightTables {
+					if schema, exists := schemas[tName]; exists {
+						mergedRow[tName] = nullRowForTable(tName, schema)
+					}
+				}
+				joinedRows = append(joinedRows, mergedRow)
+			}
+		}
+		// Add unmatched right rows
+		for j, rRow := range rightRows {
+			if !matchedRight[j] {
+				mergedRow := make(CombinedRow)
+				for _, tName := range leftTables {
+					if schema, exists := schemas[tName]; exists {
+						mergedRow[tName] = nullRowForTable(tName, schema)
+					}
+				}
+				for k, v := range rRow {
+					mergedRow[k] = v
+				}
+				joinedRows = append(joinedRows, mergedRow)
 			}
 		}
 	}
 
 	return joinedRows, nil
 }
-
-func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs, rows []CombinedRow, columns sqlparser.SelectExprs, schemas map[string]*pb.Schema) ([]map[string]interface{}, error) {
+func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs, rows []CombinedRow, columns sqlparser.SelectExprs, schemas map[string]*pb.Schema, fromTableNames []string) ([]map[string]interface{}, error) {
 	results := make([]map[string]interface{}, 0, len(rows))
-	fromTableNames := getTableNamesFromClause(from)
-
 	for _, combinedRow := range rows {
 		resultRow := make(map[string]interface{})
 		for _, colExpr := range columns {
@@ -938,7 +1848,10 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs,
 							continue
 						}
 						for colName, valAny := range rowData.Values {
-							val, _ := utils.FromAny(valAny)
+							val, err := utils.FromAny(valAny)
+							if err != nil {
+								return nil, fmt.Errorf("error converting value for column %s in table %s: %w", colName, tName, err)
+							}
 							resultRow[tName+"."+colName] = val
 						}
 					}
@@ -955,7 +1868,10 @@ func projectColumns(sh *shell.Shell, db *pb.Database, from sqlparser.TableExprs,
 						continue
 					}
 					for colName, valAny := range rowData.Values {
-						val, _ := utils.FromAny(valAny)
+						val, err := utils.FromAny(valAny)
+						if err != nil {
+							return nil, fmt.Errorf("error converting value for column %s in table %s: %w", colName, tName, err)
+						}
 						resultRow[tName+"."+colName] = val
 					}
 				}
@@ -1007,7 +1923,6 @@ func getTableNamesFromClause(from sqlparser.TableExprs) []string {
 				}
 			}
 		case *sqlparser.JoinTableExpr:
-			// Recursively get table names from left and right expressions
 			leftTables := getTableNamesFromClause(sqlparser.TableExprs{expr.LeftExpr})
 			rightTables := getTableNamesFromClause(sqlparser.TableExprs{expr.RightExpr})
 			tableNames = append(tableNames, leftTables...)
@@ -1024,12 +1939,10 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 
 	switch e := expr.(type) {
 	case *sqlparser.ExistsExpr:
-		// Handle EXISTS clause
 		subqueryResults, err := executeCorrelatedSubquery(sh, db, e.Subquery.Select.(*sqlparser.Select), row, schemas)
 		if err != nil {
 			return false, fmt.Errorf("error executing EXISTS subquery: %w", err)
 		}
-		// EXISTS returns true if subquery returns at least one row
 		return len(subqueryResults) > 0, nil
 
 	case *sqlparser.AndExpr:
@@ -1037,27 +1950,52 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 		if err != nil {
 			return false, err
 		}
+		if !left {
+			return false, nil // Short-circuit
+		}
 		right, err := evaluateExpression(sh, db, row, e.Right, schemas, fromTableNames)
 		if err != nil {
 			return false, err
 		}
-		return left && right, nil
+		return right, nil
 
 	case *sqlparser.OrExpr:
 		left, err := evaluateExpression(sh, db, row, e.Left, schemas, fromTableNames)
 		if err != nil {
 			return false, err
 		}
+		if left {
+			return true, nil // Short-circuit
+		}
 		right, err := evaluateExpression(sh, db, row, e.Right, schemas, fromTableNames)
 		if err != nil {
 			return false, err
 		}
-		return left || right, nil
+		return right, nil
+
+	case *sqlparser.IsExpr:
+		exprVal, err := evaluateExpressionValue(sh, db, row, e.Expr, schemas, fromTableNames)
+		if err != nil {
+			return false, fmt.Errorf("error evaluating IS expression: %w", err)
+		}
+		switch e.Operator {
+		case sqlparser.IsNullStr:
+			return exprVal == nil, nil
+		case sqlparser.IsNotNullStr:
+			return exprVal != nil, nil
+		default:
+			return false, fmt.Errorf("unsupported IS operator: %s", e.Operator)
+		}
 
 	case *sqlparser.ComparisonExpr:
 		left, err := evaluateExpressionValue(sh, db, row, e.Left, schemas, fromTableNames)
 		if err != nil {
-			return false, err
+			// If column doesn't exist (e.g., due to NULL row from RIGHT JOIN), treat as NULL
+			if strings.Contains(err.Error(), "not found") {
+				left = nil
+			} else {
+				return false, fmt.Errorf("error evaluating left operand: %w", err)
+			}
 		}
 
 		if e.Operator == sqlparser.InStr {
@@ -1065,6 +2003,11 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 				subqueryResults, err := executeCorrelatedSubquery(sh, db, subquery.Select.(*sqlparser.Select), row, schemas)
 				if err != nil {
 					return false, fmt.Errorf("error executing IN subquery: %w", err)
+				}
+
+				// NULL IN (...) returns false
+				if left == nil {
+					return false, nil
 				}
 
 				for _, subRow := range subqueryResults {
@@ -1080,8 +2023,12 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 				return false, nil
 			}
 
-			// Handle IN with ValTuple (list of values)
 			if valTuple, ok := e.Right.(sqlparser.ValTuple); ok {
+				// NULL IN (...) returns false
+				if left == nil {
+					return false, nil
+				}
+
 				for _, tupleExpr := range valTuple {
 					right, err := evaluateExpressionValue(sh, db, row, tupleExpr, schemas, fromTableNames)
 					if err != nil {
@@ -1102,6 +2049,11 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 					return false, fmt.Errorf("error executing NOT IN subquery: %w", err)
 				}
 
+				// NULL NOT IN (...) returns false
+				if left == nil {
+					return false, nil
+				}
+
 				for _, subRow := range subqueryResults {
 					if len(subRow) != 1 {
 						return false, fmt.Errorf("subquery in NOT IN clause must select only one column")
@@ -1115,8 +2067,12 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 				return true, nil
 			}
 
-			// Handle NOT IN with ValTuple
 			if valTuple, ok := e.Right.(sqlparser.ValTuple); ok {
+				// NULL NOT IN (...) returns false
+				if left == nil {
+					return false, nil
+				}
+
 				for _, tupleExpr := range valTuple {
 					right, err := evaluateExpressionValue(sh, db, row, tupleExpr, schemas, fromTableNames)
 					if err != nil {
@@ -1130,20 +2086,26 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 			}
 		}
 
-		// Handle LIKE operator
 		if e.Operator == sqlparser.LikeStr {
 			right, err := evaluateExpressionValue(sh, db, row, e.Right, schemas, fromTableNames)
 			if err != nil {
 				return false, err
 			}
+			// NULL LIKE ... returns false
+			if left == nil || right == nil {
+				return false, nil
+			}
 			return evaluateLike(left, right)
 		}
 
-		// Handle NOT LIKE operator
 		if e.Operator == sqlparser.NotLikeStr {
 			right, err := evaluateExpressionValue(sh, db, row, e.Right, schemas, fromTableNames)
 			if err != nil {
 				return false, err
+			}
+			// NULL NOT LIKE ... returns false
+			if left == nil || right == nil {
+				return false, nil
 			}
 			result, err := evaluateLike(left, right)
 			if err != nil {
@@ -1154,17 +2116,19 @@ func evaluateExpression(sh *shell.Shell, db *pb.Database, row CombinedRow, expr 
 
 		right, err := evaluateExpressionValue(sh, db, row, e.Right, schemas, fromTableNames)
 		if err != nil {
-			return false, err
+			// If column doesn't exist (e.g., due to NULL row from RIGHT JOIN), treat as NULL
+			if strings.Contains(err.Error(), "not found") {
+				right = nil
+			} else {
+				return false, fmt.Errorf("error evaluating right operand: %w", err)
+			}
 		}
 
 		return compareValuesWithOperator(left, right, e.Operator)
-
-	default:
-		return false, fmt.Errorf("unsupported expression type: %T", e)
 	}
-}
 
-// Helper function to compare two values for equality
+	return false, fmt.Errorf("unsupported expression type: %T", expr)
+}
 func compareValues(left, right interface{}) bool {
 	if left == nil && right == nil {
 		return true
@@ -1173,25 +2137,21 @@ func compareValues(left, right interface{}) bool {
 		return false
 	}
 
-	// Try numeric comparison
 	leftNum, leftIsNum := getNumericValue(left)
 	rightNum, rightIsNum := getNumericValue(right)
 	if leftIsNum && rightIsNum {
 		return leftNum == rightNum
 	}
 
-	// Try string comparison
 	leftStr, leftIsStr := toString(left)
 	rightStr, rightIsStr := toString(right)
 	if leftIsStr && rightIsStr {
 		return leftStr == rightStr
 	}
 
-	// Direct comparison
 	return left == right
 }
 
-// Helper function to compare values with an operator
 func compareValuesWithOperator(left, right interface{}, operator string) (bool, error) {
 	if left == nil || right == nil {
 		switch operator {
@@ -1204,12 +2164,10 @@ func compareValuesWithOperator(left, right interface{}, operator string) (bool, 
 		}
 	}
 
-	// Handle time.Time comparisons
 	leftTime, leftIsTime := left.(time.Time)
 	rightTime, rightIsTime := right.(time.Time)
 
 	if leftIsTime || rightIsTime {
-		// Convert both to time.Time
 		if !leftIsTime {
 			if leftStr, ok := toString(left); ok {
 				parsedTime, err := parseDateTime(leftStr)
@@ -1306,7 +2264,6 @@ func compareValuesWithOperator(left, right interface{}, operator string) (bool, 
 	return false, fmt.Errorf("cannot compare types %T and %T", left, right)
 }
 
-// Helper function to evaluate LIKE pattern matching
 func evaluateLike(value, pattern interface{}) (bool, error) {
 	valueStr, ok := toString(value)
 	if !ok {
@@ -1318,31 +2275,9 @@ func evaluateLike(value, pattern interface{}) (bool, error) {
 		return false, fmt.Errorf("LIKE pattern must be a string, got %T", pattern)
 	}
 
-	// Convert SQL LIKE pattern to regex
-	// % matches any sequence of characters
-	// _ matches any single character
-	regexPattern := "^"
-	for i := 0; i < len(patternStr); i++ {
-		ch := patternStr[i]
-		switch ch {
-		case '%':
-			regexPattern += ".*"
-		case '_':
-			regexPattern += "."
-		case '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '^', '$', '\\':
-			// Escape regex special characters
-			regexPattern += "\\" + string(ch)
-		default:
-			regexPattern += string(ch)
-		}
-	}
-	regexPattern += "$"
-
-	// Use simple pattern matching instead of regex for basic cases
 	return matchLikePattern(valueStr, patternStr), nil
 }
 
-// Simple LIKE pattern matching without regex
 func matchLikePattern(value, pattern string) bool {
 	return matchLikeHelper(value, pattern, 0, 0)
 }
@@ -1350,12 +2285,10 @@ func matchLikePattern(value, pattern string) bool {
 func matchLikeHelper(value, pattern string, vIdx, pIdx int) bool {
 	for pIdx < len(pattern) {
 		if pIdx < len(pattern) && pattern[pIdx] == '%' {
-			// % matches zero or more characters
 			pIdx++
 			if pIdx == len(pattern) {
-				return true // % at end matches everything
+				return true
 			}
-			// Try matching the rest of the pattern at every position
 			for i := vIdx; i <= len(value); i++ {
 				if matchLikeHelper(value, pattern, i, pIdx) {
 					return true
@@ -1363,14 +2296,12 @@ func matchLikeHelper(value, pattern string, vIdx, pIdx int) bool {
 			}
 			return false
 		} else if pIdx < len(pattern) && pattern[pIdx] == '_' {
-			// _ matches exactly one character
 			if vIdx >= len(value) {
 				return false
 			}
 			vIdx++
 			pIdx++
 		} else {
-			// Regular character must match
 			if vIdx >= len(value) || value[vIdx] != pattern[pIdx] {
 				return false
 			}
@@ -1398,11 +2329,9 @@ func getNumericValue(v interface{}) (float64, bool) {
 	return 0, false
 }
 
-// Update evaluateExpressionValue to handle ValTuple
 func evaluateExpressionValue(sh *shell.Shell, db *pb.Database, row CombinedRow, expr sqlparser.Expr, schemas map[string]*pb.Schema, fromTableNames []string) (interface{}, error) {
 	switch e := expr.(type) {
 	case sqlparser.ValTuple:
-		// Return the tuple as a slice for processing
 		values := make([]interface{}, len(e))
 		for i, tupleExpr := range e {
 			val, err := evaluateExpressionValue(sh, db, row, tupleExpr, schemas, fromTableNames)
@@ -1414,7 +2343,6 @@ func evaluateExpressionValue(sh *shell.Shell, db *pb.Database, row CombinedRow, 
 		return values, nil
 
 	case *sqlparser.Subquery:
-		// Execute a scalar subquery
 		subqueryResults, err := executeCorrelatedSubquery(sh, db, e.Select.(*sqlparser.Select), row, schemas)
 		if err != nil {
 			return nil, fmt.Errorf("error executing scalar subquery: %w", err)
@@ -1423,7 +2351,7 @@ func evaluateExpressionValue(sh *shell.Shell, db *pb.Database, row CombinedRow, 
 			return nil, fmt.Errorf("subquery returned more than one row")
 		}
 		if len(subqueryResults) == 0 {
-			return nil, nil // Subquery returned no rows, treat as NULL
+			return nil, nil
 		}
 		firstRow := subqueryResults[0]
 		if len(firstRow) > 1 {
@@ -1435,20 +2363,26 @@ func evaluateExpressionValue(sh *shell.Shell, db *pb.Database, row CombinedRow, 
 		return nil, nil
 
 	case *sqlparser.ColName:
-		// Try to resolve as an identifier first
-		val, err := evaluateIdentifier(row, e, schemas, fromTableNames)
-		if err != nil && strings.Contains(err.Error(), "column not found") {
-			// Check if it's an alias from a derived table
-			for _, tableData := range row {
-				if tableData == nil {
-					continue
+		// Check for aggregate alias in the "result" table
+		if resultData, ok := row["result"]; ok && resultData != nil {
+			if valAny, ok := resultData.Values[e.Name.String()]; ok {
+				val, err := utils.FromAny(valAny)
+				if err != nil {
+					return nil, fmt.Errorf("error converting value for column %s in result: %w", e.Name.String(), err)
 				}
-				if valAny, ok := tableData.Values[e.Name.String()]; ok {
-					return utils.FromAny(valAny)
-				}
+				return val, nil
 			}
 		}
-		return val, err
+		// Fallback to regular column evaluation
+		val, err := evaluateIdentifier(row, e, schemas, fromTableNames)
+		if err != nil {
+			// Handle case where column is not found due to LEFT OUTER JOIN
+			if strings.Contains(err.Error(), "column") && strings.Contains(err.Error(), "not found") {
+				return nil, nil // Return nil for non-existent columns in LEFT OUTER JOIN
+			}
+			return nil, fmt.Errorf("error evaluating column %s: %w", e.Name.String(), err)
+		}
+		return val, nil
 
 	case *sqlparser.SQLVal:
 		switch e.Type {
@@ -1525,7 +2459,6 @@ func evaluateExpressionValue(sh *shell.Shell, db *pb.Database, row CombinedRow, 
 }
 
 func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sqlparser.Select, outerRow CombinedRow, outerSchemas map[string]*pb.Schema) ([]map[string]interface{}, error) {
-	// Create schemas for the subquery's own tables
 	subquerySchemas := make(map[string]*pb.Schema)
 	aliases := make(map[string]string)
 	for _, tableExpr := range selectStmt.From {
@@ -1534,11 +2467,9 @@ func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sql
 		}
 	}
 
-	// Collect outer table references used in the subquery
 	referencedOuterTables := make(map[string]bool)
 	collectOuterReferences(selectStmt, referencedOuterTables)
 
-	// Create a filtered schema map that only includes outer tables actually referenced
 	filteredOuterSchemas := make(map[string]*pb.Schema)
 	for tableName := range referencedOuterTables {
 		if schema, ok := outerSchemas[tableName]; ok {
@@ -1546,7 +2477,6 @@ func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sql
 		}
 	}
 
-	// Merge subquery schemas with filtered outer schemas
 	effectiveSchemas := make(map[string]*pb.Schema)
 	for tableName, schema := range subquerySchemas {
 		effectiveSchemas[tableName] = schema
@@ -1555,16 +2485,13 @@ func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sql
 		effectiveSchemas[tableName] = schema
 	}
 
-	// Extract table names from the FROM clause
 	fromTableNames := getTableNamesFromClause(selectStmt.From)
 
-	// Execute the FROM clause
 	combinedRows, err := executeFromClause(sh, db, selectStmt.From, subquerySchemas)
 	if err != nil {
 		return nil, fmt.Errorf("error executing FROM/JOIN clause in subquery: %w", err)
 	}
 
-	// Filter rows using the WHERE clause, incorporating outer row data
 	var filteredRows []CombinedRow
 	if selectStmt.Where == nil {
 		filteredRows = combinedRows
@@ -1574,8 +2501,10 @@ func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sql
 			for k, v := range row {
 				mergedRow[k] = v
 			}
-			for k, v := range outerRow {
-				mergedRow[k] = v
+			if outerRow != nil {
+				for k, v := range outerRow {
+					mergedRow[k] = v
+				}
 			}
 
 			include, err := evaluateExpression(sh, db, mergedRow, selectStmt.Where.Expr, effectiveSchemas, fromTableNames)
@@ -1588,27 +2517,23 @@ func executeCorrelatedSubquery(sh *shell.Shell, db *pb.Database, selectStmt *sql
 		}
 	}
 
-	// Handle GROUP BY and aggregates
 	var results []map[string]interface{}
 	if selectStmt.GroupBy != nil || isAggregateQuery(selectStmt) {
-		results, err = executeAggregateQuery(sh, db, filteredRows, selectStmt, effectiveSchemas)
+		results, err = executeAggregateQuery(sh, db, filteredRows, selectStmt, effectiveSchemas, fromTableNames)
 		if err != nil {
 			return nil, fmt.Errorf("error executing aggregate query in subquery: %w", err)
 		}
 	} else {
-		// Project columns for non-aggregate queries
-		results, err = projectColumns(sh, db, selectStmt.From, filteredRows, selectStmt.SelectExprs, effectiveSchemas)
+		results, err = projectColumns(sh, db, selectStmt.From, filteredRows, selectStmt.SelectExprs, effectiveSchemas, fromTableNames)
 		if err != nil {
 			return nil, fmt.Errorf("error projecting columns in subquery: %w", err)
 		}
 	}
 
-	// Handle ORDER BY
 	if selectStmt.OrderBy != nil {
 		applyOrderByToMap(results, selectStmt.OrderBy, effectiveSchemas)
 	}
 
-	// Apply LIMIT and OFFSET
 	if selectStmt.Limit != nil {
 		results = applyLimitAndOffsetToMap(sh, db, results, selectStmt.Limit)
 	}
@@ -1638,6 +2563,8 @@ func collectOuterReferences(selectStmt *sqlparser.Select, referencedTables map[s
 		case *sqlparser.ComparisonExpr:
 			walkExpr(e.Left)
 			walkExpr(e.Right)
+		case *sqlparser.IsExpr:
+			walkExpr(e.Expr)
 		case *sqlparser.BinaryExpr:
 			walkExpr(e.Left)
 			walkExpr(e.Right)
@@ -1688,7 +2615,6 @@ func collectOuterReferences(selectStmt *sqlparser.Select, referencedTables map[s
 		walkExpr(order.Expr)
 	}
 }
-
 func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[string]*pb.Schema, fromTableNames []string) (interface{}, error) {
 	if !ident.Qualifier.IsEmpty() {
 		originalTableName := ident.Qualifier.Name.String()
@@ -1705,7 +2631,6 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 			}
 		}
 		if !foundInSchema {
-			// Check if the column exists in the row data (for derived tables)
 			if tableData, ok := row[originalTableName]; ok && tableData != nil {
 				if valAny, ok := tableData.Values[ident.Name.String()]; ok {
 					return utils.FromAny(valAny)
@@ -1744,7 +2669,6 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 	var valueFound bool
 	var possibleTables []string
 
-	// ONLY check tables from the FROM clause to avoid ambiguity with outer query tables
 	for _, tName := range fromTableNames {
 		if tableSchema, ok := schemas[tName]; ok {
 			for _, col := range tableSchema.Columns {
@@ -1769,7 +2693,6 @@ func evaluateIdentifier(row CombinedRow, ident *sqlparser.ColName, schemas map[s
 		}
 	}
 
-	// Check row data for derived table columns (only for tables in FROM clause)
 	for _, tName := range fromTableNames {
 		tableData, ok := row[tName]
 		if !ok || tableData == nil {

@@ -35,7 +35,35 @@ func ToAny(v interface{}) (*anypb.Any, error) {
 }
 
 // FromAny converts a google.protobuf.Any to an interface{}
+// func FromAny(any *anypb.Any) (interface{}, error) {
+// 	db, err := any.UnmarshalNew()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to unmarshal Any: %w", err)
+// 	}
+
+//		switch v := db.(type) {
+//		case *wrapperspb.Int64Value:
+//			return v.Value, nil
+//		case *wrapperspb.DoubleValue:
+//			return v.Value, nil
+//		case *wrapperspb.BoolValue:
+//			return v.Value, nil
+//		case *wrapperspb.StringValue:
+//			return v.Value, nil
+//		case *wrapperspb.BytesValue:
+//			return v.Value, nil
+//		case *timestamppb.Timestamp:
+//			return v.AsTime(), nil
+//		default:
+//			return nil, fmt.Errorf("unsupported type in Any: %T", v)
+//		}
+//	}
+//
+// FromAny converts a google.protobuf.Any to an interface{}
 func FromAny(any *anypb.Any) (interface{}, error) {
+	if any == nil || any.TypeUrl == "" {
+		return nil, nil // Handle NULL values
+	}
 	db, err := any.UnmarshalNew()
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal Any: %w", err)

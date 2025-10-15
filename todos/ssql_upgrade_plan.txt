@@ -15,11 +15,11 @@ The current query engine supports basic SELECTs, simple JOINs, and a few aggrega
 - [ ] **Common Table Expressions (CTEs):** Add support for the `WITH` clause for recursive and non-recursive queries to improve readability and structure of complex queries.
   - *Files to modify: `pkg/ipfsdb/query.go`, `vitess-sqlparser/` usage.*
 
-- [ ] **Advanced JOIN Types:** The current implementation performs a cross-product and then filters (an `INNER JOIN`). Full join support is essential.
-  - [ ] `LEFT OUTER JOIN`
-  - [ ] `RIGHT OUTER JOIN`
-  - [ ] `FULL OUTER JOIN`
-  - [ ] `NATURAL JOIN`
+- [x] **Advanced JOIN Types:** The current implementation performs a cross-product and then filters (an `INNER JOIN`). Full join support is essential.
+  - [x] `LEFT OUTER JOIN`
+  - [x] `RIGHT OUTER JOIN`
+  - [x ] `FULL OUTER JOIN`
+  - [x] `NATURAL JOIN`
 
 - [ ] **Advanced Filtering and Expressions:**
   - [ ] `HAVING` clause to filter results after aggregation (`GROUP BY`).

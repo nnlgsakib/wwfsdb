@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/blastrain/vitess-sqlparser/sqlparser"
+	"github.com/nnlgsakib/wwfsdb/pkg/client"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -92,7 +92,8 @@ Example:
 
 			// Handle different statement types
 			switch stmt.(type) {
-			case *sqlparser.Select:
+			case *sqlparser.Select, *sqlparser.Union:
+				// Both SELECT and UNION queries return rows
 				var rows []map[string]interface{}
 				if err := json.Unmarshal([]byte(result.Result), &rows); err != nil {
 					fmt.Fprintln(os.Stderr, "Error unmarshalling result:", err)

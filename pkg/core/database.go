@@ -184,8 +184,8 @@ func ExecuteQuery(ipfsAPI, dbName, query, signature string) (string, error) {
 		return "", err
 	}
 
-	// For read queries, just return the result
-	if _, ok := stmt.(*sqlparser.Select); ok {
+	// For read queries (SELECT and UNION), just return the result
+	if IsReadQuery(stmt) {
 		return result, nil
 	}
 
@@ -245,6 +245,16 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt sqlparser
 			return nil, "", fmt.Errorf("failed to marshal result to JSON: %w", err)
 		}
 		return db, string(jsonResult), nil // db is not modified
+	case *sqlparser.Union:
+		rows, err := executeUnion(sh, db, s)
+		if err != nil {
+			return nil, "", err
+		}
+		jsonResult, err := json.Marshal(rows)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to marshal result to JSON: %w", err)
+		}
+		return db, string(jsonResult), nil // db is not modified
 	case *sqlparser.Insert:
 		newDb, err := InsertDB(sh, db, s.Table.Name.String(), s)
 		if err != nil {
@@ -270,8 +280,12 @@ func ExecuteOnDB(sh *shell.Shell, dbName string, db *pb.Database, stmt sqlparser
 
 // IsReadQuery checks if a statement is a read-only query.
 func IsReadQuery(stmt sqlparser.Statement) bool {
-	_, ok := stmt.(*sqlparser.Select)
-	return ok
+	switch stmt.(type) {
+	case *sqlparser.Select, *sqlparser.Union:
+		return true
+	default:
+		return false
+	}
 }
 
 // VerifySignature checks if a signature is valid for a given query and database.
